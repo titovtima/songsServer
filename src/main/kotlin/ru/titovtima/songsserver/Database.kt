@@ -1,11 +1,12 @@
 package ru.titovtima.songsserver
 
+import ru.titovtima.songsserver.model.User
 import java.sql.Connection
 import java.sql.DriverManager
 
 class Database {
     companion object {
-        private val connection: Connection = DriverManager.getConnection(
+        val connection: Connection = DriverManager.getConnection(
             "jdbc:postgresql://localhost:5432/songsserver", "songsserver", "my_password")
 
         fun register(user: User): Boolean {

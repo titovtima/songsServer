@@ -11,7 +11,8 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kotlinx.serialization.Serializable
 import ru.titovtima.songsserver.Database
-import ru.titovtima.songsserver.User
+import ru.titovtima.songsserver.model.Song
+import ru.titovtima.songsserver.model.User
 import java.util.*
 
 fun Application.configureRouting() {
@@ -36,6 +37,25 @@ fun Application.configureRouting() {
                 .withExpiresAt(Date(System.currentTimeMillis() + 5*60*1000))
                 .sign(Algorithm.HMAC256(jwtSecret))
             call.respond(mapOf("token" to token))
+        }
+        authenticate("auth-jwt", strategy = AuthenticationStrategy.Optional) {
+            get("/song/{id}") {
+                val principal = call.principal<JWTPrincipal>()
+                var username: String? = null
+                if (principal != null)
+                    username = principal.payload.getClaim("username").asString()
+                val songId = call.parameters["id"]?.toIntOrNull()
+                if (songId == null) {
+                    call.respond(HttpStatusCode.NotFound)
+                    return@get
+                }
+                val song = Song.readFromDb(songId, username)
+                if (song == null) {
+                    call.respond(HttpStatusCode.NotFound)
+                } else {
+                    call.respond(HttpStatusCode.OK, song)
+                }
+            }
         }
         authenticate("auth-jwt") {
             get("/secret") {
