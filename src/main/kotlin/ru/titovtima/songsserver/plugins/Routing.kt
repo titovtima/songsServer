@@ -12,6 +12,7 @@ import io.ktor.server.routing.*
 import kotlinx.serialization.Serializable
 import ru.titovtima.songsserver.Database
 import ru.titovtima.songsserver.model.Song
+import ru.titovtima.songsserver.model.SongRights
 import ru.titovtima.songsserver.model.User
 import java.util.*
 
@@ -54,6 +55,23 @@ fun Application.configureRouting() {
                     call.respond(HttpStatusCode.NotFound)
                 } else {
                     call.respond(HttpStatusCode.OK, song)
+                }
+            }
+            get("/song/{id}/rights") {
+                val principal = call.principal<JWTPrincipal>()
+                var username: String? = null
+                if (principal != null)
+                    username = principal.payload.getClaim("username").asString()
+                val songId = call.parameters["id"]?.toIntOrNull()
+                if (songId == null) {
+                    call.respond(HttpStatusCode.NotFound)
+                    return@get
+                }
+                val songRights = SongRights.readFromDb(songId, username)
+                if (songRights == null) {
+                    call.respond(HttpStatusCode.NotFound)
+                } else {
+                    call.respond(HttpStatusCode.OK, songRights)
                 }
             }
         }

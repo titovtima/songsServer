@@ -8,7 +8,7 @@ import java.sql.ResultSet
 data class Song (val id: Int, val name: String, val text: String? = null, val chords: String? = null,
             val chordsText: String? = null, val extra: String? = null, val key: Int? = null,
             val artistId: Int? = null, val originalName: String? = null, val link: String? = null,
-            val ownerId: Int? = null, val public: Boolean = false, val inMainListL: Boolean = false) {
+            val ownerId: Int? = null, val public: Boolean = false, val inMainList: Boolean = false) {
     companion object {
         fun readFromDb(id: Int, username: String? = null): Song? {
             if (username == null) {
@@ -48,6 +48,44 @@ data class Song (val id: Int, val name: String, val text: String? = null, val ch
             } else {
                 return null
             }
+        }
+    }
+}
+
+@Serializable
+data class SongRights(val songId: Int, val readers: List<String>, val writers: List<String>, val owner: String) {
+    companion object {
+        fun readFromDb(songId: Int, username: String?): SongRights? {
+            val readers = arrayListOf<String>()
+            val queryReaders = Database.connection.prepareStatement(
+                "select username from users u right join song_reader r on u.id = r.user_id where r.song_id = ?;")
+            queryReaders.setInt(1, songId)
+            val resultReaders = queryReaders.executeQuery()
+            while (resultReaders.next()) {
+                val reader = resultReaders.getString("username")
+                readers.add(reader)
+            }
+            val writers = arrayListOf<String>()
+            val queryWriters = Database.connection.prepareStatement(
+                "select username from users u right join song_writer w on u.id = w.user_id where w.song_id = ?;")
+            queryWriters.setInt(1, songId)
+            val resultWriters = queryWriters.executeQuery()
+            while (resultWriters.next()) {
+                val writer = resultWriters.getString("username")
+                writers.add(writer)
+            }
+            val querySong = Database.connection.prepareStatement(
+                "select username from song s left join users u on s.owner_id = u.id where s.id = ?;")
+            querySong.setInt(1, songId)
+            val resultSong = querySong.executeQuery()
+            if (!resultSong.next()) {
+                return null
+            }
+            val owner = resultSong.getString("username")
+            return if (owner == username || readers.contains(username))
+                SongRights(songId, readers, writers, owner)
+            else
+                null
         }
     }
 }
