@@ -10,9 +10,13 @@ data class Song (val id: Int, val name: String, val text: String? = null, val ch
             val artistId: Int? = null, val originalName: String? = null, val link: String? = null,
             val ownerId: Int? = null, val public: Boolean = false, val inMainList: Boolean = false) {
     companion object {
-        fun readFromDb(id: Int, username: String? = null): Song? {
-            if (username == null) {
+        fun readFromDb(id: Int, user: User?): Song? {
+            if (user == null) {
                 val query = Database.connection.prepareStatement("select * from song where id = ? and public = true;")
+                query.setInt(1, id)
+                return songFromResultSet(id, query.executeQuery())
+            } else if (user.isAdmin) {
+                val query = Database.connection.prepareStatement("select * from song where id = ?;")
                 query.setInt(1, id)
                 return songFromResultSet(id, query.executeQuery())
             } else {
@@ -23,7 +27,7 @@ data class Song (val id: Int, val name: String, val text: String? = null, val ch
                             "left join song_writer w on s.id = w.song_id " +
                             "where s.id = ? and (s.public or s.owner_id = (select id from sub) " +
                             "             or r.user_id = (select id from sub) or w.user_id = (select id from sub));")
-                query.setString(1, username)
+                query.setString(1, user.username)
                 query.setInt(2, id)
                 return songFromResultSet(id, query.executeQuery())
             }
@@ -55,7 +59,8 @@ data class Song (val id: Int, val name: String, val text: String? = null, val ch
 @Serializable
 data class SongRights(val songId: Int, val readers: List<String>, val writers: List<String>, val owner: String) {
     companion object {
-        fun readFromDb(songId: Int, username: String?): SongRights? {
+        fun readFromDb(songId: Int, user: User?): SongRights? {
+            if (user == null) return null
             val readers = arrayListOf<String>()
             val queryReaders = Database.connection.prepareStatement(
                 "select username from users u right join song_reader r on u.id = r.user_id where r.song_id = ?;")
@@ -82,7 +87,7 @@ data class SongRights(val songId: Int, val readers: List<String>, val writers: L
                 return null
             }
             val owner = resultSong.getString("username")
-            return if (owner == username || readers.contains(username))
+            return if (owner == user.username || readers.contains(user.username) || user.isAdmin)
                 SongRights(songId, readers, writers, owner)
             else
                 null

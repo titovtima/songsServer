@@ -14,27 +14,28 @@ import ru.titovtima.songsserver.Database
 import ru.titovtima.songsserver.model.Song
 import ru.titovtima.songsserver.model.SongRights
 import ru.titovtima.songsserver.model.User
+import ru.titovtima.songsserver.model.UserLogin
 import java.util.*
 
 fun Application.configureRouting() {
     install(IgnoreTrailingSlash)
     routing {
         post("/register") {
-            val user = call.receive<User>()
-            val success = Database.register(user)
+            val userLogin = call.receive<UserLogin>()
+            val success = Database.register(userLogin)
             if (success)
                 call.respond(HttpStatusCode.Created)
             else
                 call.respond(HttpStatusCode.BadRequest, ErrorResponse(1, "Username is already taken"))
         }
         post("/login") {
-            val user = call.receive<User>()
-            if (!Database.checkCredentials(user)) {
+            val userLogin = call.receive<UserLogin>()
+            if (!Database.checkCredentials(userLogin)) {
                 call.respond(HttpStatusCode.Unauthorized)
                 return@post
             }
             val token = JWT.create()
-                .withClaim("username", user.username)
+                .withClaim("username", userLogin.username)
                 .withExpiresAt(Date(System.currentTimeMillis() + 5*60*1000))
                 .sign(Algorithm.HMAC256(jwtSecret))
             call.respond(mapOf("token" to token))
@@ -50,7 +51,8 @@ fun Application.configureRouting() {
                     call.respond(HttpStatusCode.NotFound)
                     return@get
                 }
-                val song = Song.readFromDb(songId, username)
+                val user = username?.let { User.readFromDb(it) }
+                val song = Song.readFromDb(songId, user)
                 if (song == null) {
                     call.respond(HttpStatusCode.NotFound)
                 } else {
@@ -67,7 +69,8 @@ fun Application.configureRouting() {
                     call.respond(HttpStatusCode.NotFound)
                     return@get
                 }
-                val songRights = SongRights.readFromDb(songId, username)
+                val user = username?.let { User.readFromDb(it) }
+                val songRights = SongRights.readFromDb(songId, user)
                 if (songRights == null) {
                     call.respond(HttpStatusCode.NotFound)
                 } else {
