@@ -16,7 +16,7 @@ import java.util.*
 fun Application.configureRouting() {
     install(IgnoreTrailingSlash)
     routing {
-        post("/register") {
+        post("/api/v1/register") {
             val userLogin = call.receive<UserLogin>()
             val success = Authorization.register(userLogin)
             if (success)
@@ -24,7 +24,7 @@ fun Application.configureRouting() {
             else
                 call.respond(HttpStatusCode.BadRequest, ErrorResponse(1, "Username is already taken"))
         }
-        post("/login") {
+        post("/api/v1/login") {
             val userLogin = call.receive<UserLogin>()
             if (!Authorization.checkCredentials(userLogin)) {
                 call.respond(HttpStatusCode.Unauthorized)
@@ -37,7 +37,7 @@ fun Application.configureRouting() {
                 .sign(Algorithm.HMAC256(jwtSecret))
             call.respond(mapOf("token" to token))
         }
-        get("/audio/{uuid}") {
+        get("/api/v1/audio/{uuid}") {
             val uuid = call.parameters["uuid"]
             if (uuid == null) {
                 call.respond(HttpStatusCode.NotFound)
@@ -52,7 +52,7 @@ fun Application.configureRouting() {
             call.respond(byteArray)
         }
         authenticate("auth-jwt", strategy = AuthenticationStrategy.Optional) {
-            get("/song/{id}") {
+            get("/api/v1/song/{id}") {
                 val principal = call.principal<JWTPrincipal>()
                 var username: String? = null
                 if (principal != null)
@@ -70,7 +70,7 @@ fun Application.configureRouting() {
                     call.respond(HttpStatusCode.OK, song)
                 }
             }
-            get("/song/{id}/rights") {
+            get("/api/v1/song/{id}/rights") {
                 val principal = call.principal<JWTPrincipal>()
                 var username: String? = null
                 if (principal != null)
@@ -90,7 +90,7 @@ fun Application.configureRouting() {
             }
         }
         authenticate("auth-jwt") {
-            post("/change_password") {
+            post("/api/v1/change_password") {
                 val principal = call.principal<JWTPrincipal>()
                 val username = principal!!.payload.getClaim("username").asString()
                 val user = User.readFromDb(username)
