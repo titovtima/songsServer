@@ -160,3 +160,16 @@ create table old_encoded_password (
     user_id int references users(id) primary key,
     password varchar(128) not null
 );
+
+create table song_draft (
+    song_id int not null references song(id),
+    user_id int not null references users(id),
+    song_data text,
+    updated_at timestamptz default now()
+);
+
+create table new_song_draft (
+    user_id int not null references users(id),
+    song_data text,
+    updated_at timestamptz default now()
+);
