@@ -21,4 +21,4 @@ fun Application.module() {
 }
 
 val dbConnection: Connection = DriverManager.getConnection(
-    "jdbc:postgresql://localhost:5432/songsserver", "songsserver", "my_password")
+    "jdbc:postgresql://localhost:5432/songsserver", "songsserver", System.getenv("POSTGRES_PASSWORD"))
