@@ -64,5 +64,14 @@ class Authorization {
                 return false
             }
         }
+
+        fun changePassword(user: User, newPassword: String) {
+            val encodedPassword = Encoder.encodeString(newPassword).toString()
+            val query = Database.connection.prepareStatement(
+                "update users set password = ?, last_change_password = now() where id = ?;")
+            query.setString(1, encodedPassword)
+            query.setInt(2, user.id)
+            query.execute()
+        }
     }
 }

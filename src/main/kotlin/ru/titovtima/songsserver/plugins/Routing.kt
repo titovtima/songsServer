@@ -32,7 +32,8 @@ fun Application.configureRouting() {
             }
             val token = JWT.create()
                 .withClaim("username", userLogin.username)
-                .withExpiresAt(Date(System.currentTimeMillis() + 5*60*1000))
+                .withClaim("created_at", System.currentTimeMillis())
+                .withExpiresAt(Date(System.currentTimeMillis() + 30*60*1000))
                 .sign(Algorithm.HMAC256(jwtSecret))
             call.respond(mapOf("token" to token))
         }
@@ -75,10 +76,17 @@ fun Application.configureRouting() {
             }
         }
         authenticate("auth-jwt") {
-            get("/secret") {
+            post("/change_password") {
                 val principal = call.principal<JWTPrincipal>()
                 val username = principal!!.payload.getClaim("username").asString()
-                call.respondText("Hello, $username. This token expires at ${principal.expiresAt}")
+                val user = User.readFromDb(username)
+                if (user == null) {
+                    call.respond(HttpStatusCode.Unauthorized)
+                    return@post
+                }
+                val newPassword = call.receive<NewPassword>().password
+                Authorization.changePassword(user, newPassword)
+                call.respond(HttpStatusCode.OK)
             }
         }
     }
@@ -86,3 +94,6 @@ fun Application.configureRouting() {
 
 @Serializable
 data class ErrorResponse(val errorCode: Int, val details: String)
+
+@Serializable
+data class NewPassword(val password: String)
