@@ -10,11 +10,7 @@ import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kotlinx.serialization.Serializable
-import ru.titovtima.songsserver.Database
-import ru.titovtima.songsserver.model.Song
-import ru.titovtima.songsserver.model.SongRights
-import ru.titovtima.songsserver.model.User
-import ru.titovtima.songsserver.model.UserLogin
+import ru.titovtima.songsserver.model.*
 import java.util.*
 
 fun Application.configureRouting() {
@@ -22,7 +18,7 @@ fun Application.configureRouting() {
     routing {
         post("/register") {
             val userLogin = call.receive<UserLogin>()
-            val success = Database.register(userLogin)
+            val success = Authorization.register(userLogin)
             if (success)
                 call.respond(HttpStatusCode.Created)
             else
@@ -30,7 +26,7 @@ fun Application.configureRouting() {
         }
         post("/login") {
             val userLogin = call.receive<UserLogin>()
-            if (!Database.checkCredentials(userLogin)) {
+            if (!Authorization.checkCredentials(userLogin)) {
                 call.respond(HttpStatusCode.Unauthorized)
                 return@post
             }
