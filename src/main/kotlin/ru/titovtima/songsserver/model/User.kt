@@ -1,7 +1,7 @@
 package ru.titovtima.songsserver.model
 
 import kotlinx.serialization.Serializable
-import ru.titovtima.songsserver.Database
+import ru.titovtima.songsserver.dbConnection
 
 @Serializable
 data class UserLogin(val username: String, val password: String)
@@ -9,7 +9,7 @@ data class UserLogin(val username: String, val password: String)
 class User(val id: Int, val username: String, val isAdmin: Boolean, val approved: Boolean) {
     companion object {
         fun readFromDb(id: Int): User? {
-            val query = Database.connection.prepareStatement(
+            val query = dbConnection.prepareStatement(
                 "select username, is_admin, approved from users where id = ?;")
             query.setInt(1, id)
             val result = query.executeQuery()
@@ -22,7 +22,7 @@ class User(val id: Int, val username: String, val isAdmin: Boolean, val approved
         }
 
         fun readFromDb(username: String): User? {
-            val query = Database.connection.prepareStatement(
+            val query = dbConnection.prepareStatement(
                 "select id, is_admin, approved from users where username = ?;")
             query.setString(1, username)
             val result = query.executeQuery()

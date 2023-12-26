@@ -5,7 +5,7 @@ import com.auth0.jwt.algorithms.Algorithm
 import io.ktor.server.application.*
 import io.ktor.server.auth.*
 import io.ktor.server.auth.jwt.*
-import ru.titovtima.songsserver.Database
+import ru.titovtima.songsserver.dbConnection
 import java.io.File
 
 val jwtSecret = File("jwt_secret").inputStream().readBytes().toString(Charsets.UTF_8)
@@ -23,7 +23,7 @@ fun Application.configureSecurity() {
             validate { credential ->
                 val username = credential.payload.getClaim("username").asString()
                 if (username == "") return@validate null
-                val dbQuery = Database.connection.prepareStatement(
+                val dbQuery = dbConnection.prepareStatement(
                     "select last_change_password from users where username = ?;")
                 dbQuery.setString(1, username)
                 val resultSet = dbQuery.executeQuery()

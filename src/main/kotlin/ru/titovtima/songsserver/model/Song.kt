@@ -5,7 +5,7 @@ import aws.sdk.kotlin.services.s3.model.GetObjectRequest
 import aws.smithy.kotlin.runtime.content.toByteArray
 import aws.smithy.kotlin.runtime.net.url.Url
 import kotlinx.serialization.Serializable
-import ru.titovtima.songsserver.Database
+import ru.titovtima.songsserver.dbConnection
 import java.sql.ResultSet
 
 @Serializable
@@ -15,15 +15,15 @@ data class Song (val id: Int, val name: String, val extra: String? = null, val k
     companion object {
         fun readFromDb(id: Int, user: User?): Song? {
             if (user == null) {
-                val query = Database.connection.prepareStatement("select * from song where id = ? and public = true;")
+                val query = dbConnection.prepareStatement("select * from song where id = ? and public = true;")
                 query.setInt(1, id)
                 return songFromResultSet(id, query.executeQuery())
             } else if (user.isAdmin) {
-                val query = Database.connection.prepareStatement("select * from song where id = ?;")
+                val query = dbConnection.prepareStatement("select * from song where id = ?;")
                 query.setInt(1, id)
                 return songFromResultSet(id, query.executeQuery())
             } else {
-                val query = Database.connection.prepareStatement(
+                val query = dbConnection.prepareStatement(
                     "select * from song s " +
                             "left join song_reader r on s.id = r.song_id " +
                             "left join song_writer w on s.id = w.song_id " +
@@ -55,7 +55,7 @@ data class Song (val id: Int, val name: String, val extra: String? = null, val k
         }
 
         private fun getAllSongAudio(songId: Int): List<String> {
-            val query = Database.connection.prepareStatement("select uuid from song_audio where song_id = ?;")
+            val query = dbConnection.prepareStatement("select uuid from song_audio where song_id = ?;")
             query.setInt(1, songId)
             val resultSet = query.executeQuery()
             val result = arrayListOf<String>()
@@ -81,7 +81,7 @@ fun songPartTypeFromInt(int: Int) = when (int) {
 data class SongPart(val type: SongPartType, val ord: Int, val name: String?, val data: String, val key: Int?) {
     companion object {
         fun getAllSongParts(songId: Int): List<SongPart> {
-            val query = Database.connection.prepareStatement("select * from song_part where song_id = ?;")
+            val query = dbConnection.prepareStatement("select * from song_part where song_id = ?;")
             query.setInt(1, songId)
             val resultSet = query.executeQuery()
             val result = arrayListOf<SongPart>()
@@ -103,7 +103,7 @@ data class SongPart(val type: SongPartType, val ord: Int, val name: String?, val
 data class Artist(val id: Int, val name: String) {
     companion object {
         fun readFromDb(id: Int): Artist? {
-            val query = Database.connection.prepareStatement("select name from artist where id = ?;")
+            val query = dbConnection.prepareStatement("select name from artist where id = ?;")
             query.setInt(1, id)
             val resultSet = query.executeQuery()
             if (resultSet.next()) {
@@ -120,7 +120,7 @@ data class SongPerformance(val artist: Artist?, val songName: String?, val link:
                            val isOriginal: Boolean = false, val isMain: Boolean) {
     companion object {
         fun getAllSongPerformances(songId: Int): List<SongPerformance> {
-            val query = Database.connection.prepareStatement("select * from song_performance where song_id = ?;")
+            val query = dbConnection.prepareStatement("select * from song_performance where song_id = ?;")
             query.setInt(1, songId)
             val resultSet = query.executeQuery()
             val result = arrayListOf<SongPerformance>()
@@ -144,7 +144,7 @@ data class SongRights(val songId: Int, val readers: List<String>, val writers: L
         fun readFromDb(songId: Int, user: User?): SongRights? {
             if (user == null) return null
             val readers = arrayListOf<String>()
-            val queryReaders = Database.connection.prepareStatement(
+            val queryReaders = dbConnection.prepareStatement(
                 "select username from users u right join song_reader r on u.id = r.user_id where r.song_id = ?;")
             queryReaders.setInt(1, songId)
             val resultReaders = queryReaders.executeQuery()
@@ -153,7 +153,7 @@ data class SongRights(val songId: Int, val readers: List<String>, val writers: L
                 readers.add(reader)
             }
             val writers = arrayListOf<String>()
-            val queryWriters = Database.connection.prepareStatement(
+            val queryWriters = dbConnection.prepareStatement(
                 "select username from users u right join song_writer w on u.id = w.user_id where w.song_id = ?;")
             queryWriters.setInt(1, songId)
             val resultWriters = queryWriters.executeQuery()
@@ -161,7 +161,7 @@ data class SongRights(val songId: Int, val readers: List<String>, val writers: L
                 val writer = resultWriters.getString("username")
                 writers.add(writer)
             }
-            val querySong = Database.connection.prepareStatement(
+            val querySong = dbConnection.prepareStatement(
                 "select username from song s left join users u on s.owner_id = u.id where s.id = ?;")
             querySong.setInt(1, songId)
             val resultSong = querySong.executeQuery()
