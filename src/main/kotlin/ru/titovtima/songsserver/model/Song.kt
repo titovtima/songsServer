@@ -15,7 +15,11 @@ data class Song (val id: Int, val name: String, val extra: String? = null, val k
     companion object {
         fun readFromDb(id: Int, user: User?): Song? {
             if (user == null) {
-                val query = dbConnection.prepareStatement("select * from song where id = ? and public = true;")
+                val query = dbConnection.prepareStatement(
+                    "select * from song s " +
+                            "left join song_in_list sl on s.id = sl.song_id " +
+                            "left join songs_list l on sl.list_id = l.id " +
+                            "where s.id = ? and (s.public or l.public);")
                 query.setInt(1, id)
                 return songFromResultSet(id, query.executeQuery())
             } else if (user.isAdmin) {
@@ -25,13 +29,38 @@ data class Song (val id: Int, val name: String, val extra: String? = null, val k
             } else {
                 val query = dbConnection.prepareStatement(
                     "select * from song s " +
-                            "left join song_reader r on s.id = r.song_id " +
-                            "left join song_writer w on s.id = w.song_id " +
-                            "where s.id = ? and (s.public or s.owner_id = ? or r.user_id = ? or w.user_id = ?);")
+                            "left join song_reader sr on s.id = sr.song_id " +
+                            "left join song_writer sw on s.id = sw.song_id " +
+                            "left join song_in_list sl on s.id = sl.song_id " +
+                            "left join songs_list l on sl.list_id = l.id " +
+                            "left join list_reader lr on sl.list_id = lr.list_id " +
+                            "left join list_writer lw on sl.list_id = lw.list_id " +
+                            "left join group_song_reader gsr on s.id = gsr.song_id " +
+                            "left join group_song_writer gsw on s.id = gsw.song_id " +
+                            "left join group_list_reader glr on sl.list_id = glr.list_id " +
+                            "left join group_list_writer glw on sl.list_id = glw.list_id " +
+                            "left join users_group g " +
+                            "    on gsr.group_id = g.id or gsw.group_id = g.id " +
+                            "           or glr.group_id = g.id or glw.group_id = g.id " +
+                            "left join user_in_group ug " +
+                            "    on gsr.group_id = ug.group_id or gsw.group_id = ug.group_id " +
+                            "           or glr.group_id = ug.group_id or glw.group_id = ug.group_id " +
+                            "left join group_admin ga " +
+                            "    on gsr.group_id = ga.group_id or gsw.group_id = ga.group_id " +
+                            "           or glr.group_id = ga.group_id or glw.group_id = ga.group_id " +
+                            "where s.id = ? and (s.owner_id = ? or l.owner_id = ? or s.public or l.public " +
+                            "   or sr.user_id = ? or sw.user_id = ? or lr.user_id = ? or lw.user_id = ? " +
+                            "   or g.owner_id = ? or ug.user_id = ? or ga.user_id = ?);")
                 query.setInt(1, id)
                 query.setInt(2, user.id)
                 query.setInt(3, user.id)
                 query.setInt(4, user.id)
+                query.setInt(5, user.id)
+                query.setInt(6, user.id)
+                query.setInt(7, user.id)
+                query.setInt(8, user.id)
+                query.setInt(9, user.id)
+                query.setInt(10, user.id)
                 return songFromResultSet(id, query.executeQuery())
             }
         }
