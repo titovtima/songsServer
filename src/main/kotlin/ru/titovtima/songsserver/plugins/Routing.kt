@@ -37,6 +37,20 @@ fun Application.configureRouting() {
                 .sign(Algorithm.HMAC256(jwtSecret))
             call.respond(mapOf("token" to token))
         }
+        get("/audio/{uuid}") {
+            val uuid = call.parameters["uuid"]
+            if (uuid == null) {
+                call.respond(HttpStatusCode.NotFound)
+                return@get
+            }
+            val byteArray = loadAudioFromS3(uuid)
+            if (byteArray == null) {
+                call.respond(HttpStatusCode.NotFound)
+                return@get
+            }
+            call.response.header("Content-Type", "audio/mpeg")
+            call.respond(byteArray)
+        }
         authenticate("auth-jwt", strategy = AuthenticationStrategy.Optional) {
             get("/song/{id}") {
                 val principal = call.principal<JWTPrincipal>()

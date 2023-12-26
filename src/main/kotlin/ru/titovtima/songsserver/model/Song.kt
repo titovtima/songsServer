@@ -1,5 +1,9 @@
 package ru.titovtima.songsserver.model
 
+import aws.sdk.kotlin.services.s3.S3Client
+import aws.sdk.kotlin.services.s3.model.GetObjectRequest
+import aws.smithy.kotlin.runtime.content.toByteArray
+import aws.smithy.kotlin.runtime.net.url.Url
 import kotlinx.serialization.Serializable
 import ru.titovtima.songsserver.Database
 import java.sql.ResultSet
@@ -7,7 +11,7 @@ import java.sql.ResultSet
 @Serializable
 data class Song (val id: Int, val name: String, val extra: String? = null, val key: Int? = null,
                  val ownerId: Int? = null, val public: Boolean = false, val inMainList: Boolean = false,
-                 val parts: List<SongPart>, val performances: List<SongPerformance>) {
+                 val parts: List<SongPart>, val performances: List<SongPerformance>, val audios: List<String>) {
     companion object {
         fun readFromDb(id: Int, user: User?): Song? {
             if (user == null) {
@@ -43,10 +47,23 @@ data class Song (val id: Int, val name: String, val extra: String? = null, val k
                 val inMainList = resultSet.getBoolean("in_main_list")
                 val songParts = SongPart.getAllSongParts(id)
                 val songPerformances = SongPerformance.getAllSongPerformances(id)
-                return Song(id, name, extra, key, ownerId, public, inMainList, songParts, songPerformances)
+                val songAudios = getAllSongAudio(id)
+                return Song(id, name, extra, key, ownerId, public, inMainList, songParts, songPerformances, songAudios)
             } else {
                 return null
             }
+        }
+
+        private fun getAllSongAudio(songId: Int): List<String> {
+            val query = Database.connection.prepareStatement("select uuid from song_audio where song_id = ?;")
+            query.setInt(1, songId)
+            val resultSet = query.executeQuery()
+            val result = arrayListOf<String>()
+            while (resultSet.next()) {
+                val uuid = resultSet.getString("uuid")
+                result.add(uuid)
+            }
+            return result
         }
     }
 }
@@ -158,4 +175,24 @@ data class SongRights(val songId: Int, val readers: List<String>, val writers: L
                 null
         }
     }
+}
+
+suspend fun loadAudioFromS3(uuid: String): ByteArray? {
+    val getRequest = GetObjectRequest {
+        bucket = "songssite"
+        key = uuid
+    }
+
+    var resultStream: ByteArray? = null
+
+    S3Client.fromEnvironment {
+        endpointUrl = Url.parse("https://storage.yandexcloud.net/")
+        region = "ru-central1"
+    }.use { s3 ->
+        s3.getObject(getRequest) { response ->
+            resultStream = response.body?.toByteArray()
+        }
+    }
+
+    return resultStream
 }
