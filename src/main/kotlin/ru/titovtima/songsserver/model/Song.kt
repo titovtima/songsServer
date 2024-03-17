@@ -2,11 +2,14 @@ package ru.titovtima.songsserver.model
 
 import aws.sdk.kotlin.services.s3.S3Client
 import aws.sdk.kotlin.services.s3.model.GetObjectRequest
+import aws.sdk.kotlin.services.s3.model.PutObjectRequest
+import aws.smithy.kotlin.runtime.content.ByteStream
 import aws.smithy.kotlin.runtime.content.toByteArray
 import aws.smithy.kotlin.runtime.net.url.Url
 import kotlinx.serialization.Serializable
 import ru.titovtima.songsserver.dbConnection
 import java.sql.ResultSet
+import java.util.UUID
 
 @Serializable
 data class Song (val id: Int, val name: String, val extra: String? = null, val key: Int? = null,
@@ -206,22 +209,55 @@ data class SongRights(val songId: Int, val readers: List<String>, val writers: L
     }
 }
 
-suspend fun loadAudioFromS3(uuid: String): ByteArray? {
-    val getRequest = GetObjectRequest {
-        bucket = "songssite"
-        key = uuid
-    }
+class SongAudio {
+    companion object {
+        private const val S3_BUCKET = "songssite"
 
-    var resultStream: ByteArray? = null
+        suspend fun loadAudioFromS3(uuid: String): ByteArray? {
+            val getRequest = GetObjectRequest {
+                bucket = S3_BUCKET
+                key = uuid
+            }
 
-    S3Client.fromEnvironment {
-        endpointUrl = Url.parse("https://storage.yandexcloud.net/")
-        region = "ru-central1"
-    }.use { s3 ->
-        s3.getObject(getRequest) { response ->
-            resultStream = response.body?.toByteArray()
+            var resultStream: ByteArray? = null
+
+            S3Client.fromEnvironment {
+                endpointUrl = Url.parse("https://storage.yandexcloud.net/")
+                region = "ru-central1"
+            }.use { s3 ->
+                s3.getObject(getRequest) { response ->
+                    resultStream = response.body?.toByteArray()
+                }
+            }
+
+            return resultStream
+        }
+
+        // TODO: Error with big files
+        suspend fun uploadAudioToS3(byteArray: ByteArray): String {
+            var uuid = UUID.randomUUID().toString()
+            while (!checkAudioUuidFree(uuid))
+                uuid = UUID.randomUUID().toString()
+            val putRequest = PutObjectRequest {
+                bucket = S3_BUCKET
+                key = uuid
+                body = ByteStream.fromBytes(byteArray)
+            }
+
+            S3Client.fromEnvironment {
+                endpointUrl = Url.parse("https://storage.yandexcloud.net/")
+                region = "ru-central1"
+            }.use { s3 ->
+                println(s3.putObject(putRequest).eTag)
+            }
+
+            return uuid
+        }
+
+        private fun checkAudioUuidFree(uuid: String): Boolean {
+            val query = dbConnection.prepareStatement("select * from song_audio where uuid = ?;")
+            query.setString(1, uuid)
+            return !query.executeQuery().next()
         }
     }
-
-    return resultStream
 }

@@ -43,7 +43,7 @@ fun Application.configureRouting() {
                 call.respond(HttpStatusCode.NotFound)
                 return@get
             }
-            val byteArray = loadAudioFromS3(uuid)
+            val byteArray = SongAudio.loadAudioFromS3(uuid)
             if (byteArray == null) {
                 call.respond(HttpStatusCode.NotFound)
                 return@get
@@ -101,6 +101,16 @@ fun Application.configureRouting() {
                 val newPassword = call.receive<NewPassword>().password
                 Authorization.changePassword(user, newPassword)
                 call.respond(HttpStatusCode.OK)
+            }
+            post("/api/v1/audio") {
+                val contentType = call.request.contentType()
+                if (!contentType.match(ContentType.Audio.MPEG)) {
+                    call.respond(HttpStatusCode.UnsupportedMediaType)
+                    return@post
+                }
+                val bytes = call.receive<ByteArray>()
+                val uuid = SongAudio.uploadAudioToS3(bytes)
+                call.respond(mapOf("uuid" to uuid))
             }
         }
     }
