@@ -152,7 +152,7 @@ create table group_song_data (
 );
 
 create table song_audio (
-    song_id int references song(id),
+    song_id int references song(id) on delete set null,
     uuid char(36) primary key
 );
 
@@ -173,3 +173,98 @@ create table new_song_draft (
     song_data text,
     updated_at timestamptz default now()
 );
+
+-- drop function if exists readable_songs;
+-- drop function if exists writable_songs;
+-- drop function if exists public_songs;
+
+create function readable_songs (reader_id int) returns table (
+    id int,
+    name varchar(256),
+    extra text,
+    key int,
+    owner_id int,
+    public boolean,
+    in_main_list boolean,
+    created_at timestamptz,
+    updated_at timestamptz
+) as '
+select
+distinct s.id, s.name, s.extra, s.key, s.owner_id, s.public, s.in_main_list, s.created_at, s.updated_at
+from song s
+left join song_reader sr on s.id = sr.song_id
+left join song_writer sw on s.id = sw.song_id
+left join song_in_list sl on s.id = sl.song_id
+left join songs_list l on sl.list_id = l.id
+left join list_reader lr on sl.list_id = lr.list_id
+left join list_writer lw on sl.list_id = lw.list_id
+left join group_song_reader gsr on s.id = gsr.song_id
+left join group_song_writer gsw on s.id = gsw.song_id
+left join group_list_reader glr on sl.list_id = glr.list_id
+left join group_list_writer glw on sl.list_id = glw.list_id
+left join users_group g
+   on gsr.group_id = g.id or gsw.group_id = g.id
+   or glr.group_id = g.id or glw.group_id = g.id
+left join user_in_group ug
+   on gsr.group_id = ug.group_id or gsw.group_id = ug.group_id
+   or glr.group_id = ug.group_id or glw.group_id = ug.group_id
+left join group_admin ga
+   on gsr.group_id = ga.group_id or gsw.group_id = ga.group_id
+   or glr.group_id = ga.group_id or glw.group_id = ga.group_id
+where s.owner_id = reader_id or l.owner_id = reader_id or s.public or l.public
+   or sr.user_id = reader_id or sw.user_id = reader_id or lr.user_id = reader_id or lw.user_id = reader_id
+   or g.owner_id = reader_id or ug.user_id = reader_id or ga.user_id = reader_id
+order by s.id;
+' language sql;
+
+create function writable_songs (writer_id int) returns table (
+    id int,
+    name varchar(256),
+    extra text,
+    key int,
+    owner_id int,
+    public boolean,
+    in_main_list boolean,
+    created_at timestamptz,
+    updated_at timestamptz
+) as '
+select
+distinct s.id, s.name, s.extra, s.key, s.owner_id, s.public, s.in_main_list, s.created_at, s.updated_at
+from song s
+left join song_writer sw on s.id = sw.song_id
+left join song_in_list sl on s.id = sl.song_id
+left join songs_list l on sl.list_id = l.id
+left join list_writer lw on sl.list_id = lw.list_id
+left join group_song_writer gsw on s.id = gsw.song_id
+left join group_list_writer glw on sl.list_id = glw.list_id
+left join users_group g
+    on gsw.group_id = g.id or glw.group_id = g.id
+left join user_in_group ug
+    on gsw.group_id = ug.group_id or glw.group_id = ug.group_id
+left join group_admin ga
+    on gsw.group_id = ga.group_id or glw.group_id = ga.group_id
+where s.owner_id = writer_id or l.owner_id = writer_id
+   or sw.user_id = writer_id or lw.user_id = writer_id
+   or g.owner_id = writer_id or ug.user_id = writer_id or ga.user_id = writer_id
+order by s.id;
+' language sql;
+
+create function public_songs() returns table (
+    id int,
+    name varchar(256),
+    extra text,
+    key int,
+    owner_id int,
+    public boolean,
+    in_main_list boolean,
+    created_at timestamptz,
+    updated_at timestamptz
+) as '
+select
+distinct s.id, s.name, s.extra, s.key, s.owner_id, s.public, s.in_main_list, s.created_at, s.updated_at
+from song s
+left join song_in_list sl on s.id = sl.song_id
+left join songs_list l on sl.list_id = l.id
+where s.public or l.public
+order by s.id;
+' language sql;
