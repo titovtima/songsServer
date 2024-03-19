@@ -112,6 +112,36 @@ fun Application.configureRouting() {
                 val uuid = SongAudio.uploadAudioToS3(bytes)
                 call.respond(mapOf("uuid" to uuid))
             }
+            post("/api/v1/song/{id}") {
+                val principal = call.principal<JWTPrincipal>()
+                var username: String? = null
+                if (principal != null)
+                    username = principal.payload.getClaim("username").asString()
+                if (call.parameters["id"] == "new") {
+                    call.respond(HttpStatusCode.NotImplemented)
+                    return@post
+                }
+                val user = username?.let { it1 -> User.readFromDb(it1) }
+                if (user == null) {
+                    call.respond(HttpStatusCode.Unauthorized)
+                    return@post
+                }
+                val songId = call.parameters["id"]?.toIntOrNull()
+                if (songId == null) {
+                    call.respond(HttpStatusCode.NotFound)
+                    return@post
+                }
+                val song = call.receive<Song>()
+                if (song.id != songId) {
+                    call.respond(HttpStatusCode.BadRequest)
+                    return@post
+                }
+                if (!song.saveToDb(user)) {
+                    call.respond(HttpStatusCode.InternalServerError, "Error while writing to database")
+                } else {
+                    call.respond(HttpStatusCode.OK)
+                }
+            }
         }
     }
 }

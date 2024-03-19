@@ -9,6 +9,8 @@ import aws.smithy.kotlin.runtime.net.url.Url
 import kotlinx.serialization.Serializable
 import ru.titovtima.songsserver.dbConnection
 import java.sql.ResultSet
+import java.sql.Types
+import java.util.Collections
 import java.util.UUID
 
 @Serializable
@@ -63,9 +65,66 @@ data class Song (val id: Int, val name: String, val extra: String? = null, val k
             return result
         }
     }
+
+    fun saveToDb(user: User): Boolean {
+        val queryCheckRights = dbConnection.prepareStatement("select id from writable_songs(?) where id = ?;")
+        queryCheckRights.setInt(1, user.id)
+        queryCheckRights.setInt(2, id)
+        val resultSet = queryCheckRights.executeQuery()
+        if (!resultSet.next()) return false
+        dbConnection.autoCommit = false
+        try {
+            val queryUpdate = dbConnection.prepareStatement(
+                "update song set name = ?, extra = ?, key = ?, public = ?, updated_at = now() where id = ?;")
+            queryUpdate.setString(1, name)
+            if (extra == null) queryUpdate.setNull(2, Types.VARCHAR)
+            else queryUpdate.setString(2, extra)
+            if (key == null) queryUpdate.setNull(3, Types.INTEGER)
+            else queryUpdate.setInt(3, key)
+            queryUpdate.setBoolean(4, public)
+            queryUpdate.setInt(5, id)
+            queryUpdate.executeUpdate()
+
+            val queryDeleteSongParts = dbConnection.prepareStatement("delete from song_part where song_id = ?;")
+            queryDeleteSongParts.setInt(1, id)
+            queryDeleteSongParts.executeUpdate()
+            for (part in parts) part.saveToDb(id)
+
+            val queryDeleteSongPerformances =
+                dbConnection.prepareStatement("delete from song_performance where song_id = ?;")
+            queryDeleteSongPerformances.setInt(1, id)
+            queryDeleteSongPerformances.executeUpdate()
+            for (performance in performances) performance.saveToDb(id)
+
+            val queryDeleteAudios = dbConnection.prepareStatement(
+                "update song_audio set song_id = null where song_id = ?;")
+            queryDeleteAudios.setInt(1, id)
+            queryDeleteAudios.executeUpdate()
+            if (audios.isNotEmpty()) {
+                val questions = Collections.nCopies(audios.size, "?").joinToString(",")
+                val query = dbConnection.prepareStatement(
+                    "update song_audio set song_id = ? where uuid in ($questions);")
+                query.setInt(1, id)
+                for (i in audios.indices) query.setString(i + 2, audios[i])
+                if (query.executeUpdate() != audios.size) {
+                    dbConnection.rollback()
+                    dbConnection.autoCommit = true
+                    return false
+                }
+            }
+        } catch (e: Exception) {
+            println(e)
+            dbConnection.rollback()
+            dbConnection.autoCommit = true
+            return false
+        }
+        dbConnection.commit()
+        dbConnection.autoCommit = true
+        return true
+    }
 }
 
-enum class SongPartType(int: Int) { Text(1), Chords(2), ChordsText(3) }
+enum class SongPartType(val int: Int) { Text(1), Chords(2), ChordsText(3) }
 
 fun songPartTypeFromInt(int: Int) = when (int) {
     1 -> SongPartType.Text
@@ -93,6 +152,20 @@ data class SongPart(val type: SongPartType, val ord: Int, val name: String?, val
             }
             return result
         }
+    }
+
+    fun saveToDb(songId: Int) {
+        val query = dbConnection.prepareStatement(
+            "insert into song_part (song_id, type, ord, name, data, key) values (?, ?, ?, ?, ?, ?);")
+        query.setInt(1, songId)
+        query.setInt(2, type.int)
+        query.setInt(3, ord)
+        if (name == null) query.setNull(4, Types.VARCHAR)
+        else query.setString(4, name)
+        query.setString(5, data)
+        if (key == null) query.setNull(6, Types.INTEGER)
+        else query.setInt(6, key)
+        query.executeUpdate()
     }
 }
 
@@ -132,6 +205,22 @@ data class SongPerformance(val artist: Artist?, val songName: String?, val link:
             }
             return result
         }
+    }
+
+    fun saveToDb(songId: Int) {
+        val query = dbConnection.prepareStatement(
+            "insert into song_performance (song_id, artist_id, song_name, link, is_original, is_main) " +
+                    "values (?, ?, ?, ?, ?);")
+        query.setInt(1, songId)
+        if (artist == null) query.setNull(2, Types.INTEGER)
+        else query.setInt(2, artist.id)
+        if (songName == null) query.setNull(3, Types.VARCHAR)
+        else query.setString(3, songName)
+        if (link == null) query.setNull(4, Types.VARCHAR)
+        else query.setString(4, link)
+        query.setBoolean(5, isOriginal)
+        query.setBoolean(6, isMain)
+        query.executeUpdate()
     }
 }
 
