@@ -117,13 +117,23 @@ fun Application.configureRouting() {
                 var username: String? = null
                 if (principal != null)
                     username = principal.payload.getClaim("username").asString()
-                if (call.parameters["id"] == "new") {
-                    call.respond(HttpStatusCode.NotImplemented)
-                    return@post
-                }
                 val user = username?.let { it1 -> User.readFromDb(it1) }
                 if (user == null) {
                     call.respond(HttpStatusCode.Unauthorized)
+                    return@post
+                }
+                if (call.parameters["id"] == "new") {
+                    val songData = call.receive<NewSongData>()
+                    val song = songData.makeSong(user)
+                    if (song == null) {
+                        call.respond(HttpStatusCode.InternalServerError, "Error getting new song id")
+                        return@post
+                    }
+                    if (!song.saveToDb(user, true)) {
+                        call.respond(HttpStatusCode.InternalServerError, "Error while writing to database")
+                    } else {
+                        call.respond(HttpStatusCode.Created, song)
+                    }
                     return@post
                 }
                 val songId = call.parameters["id"]?.toIntOrNull()
@@ -136,7 +146,7 @@ fun Application.configureRouting() {
                     call.respond(HttpStatusCode.BadRequest)
                     return@post
                 }
-                if (!song.saveToDb(user)) {
+                if (!song.saveToDb(user, false)) {
                     call.respond(HttpStatusCode.InternalServerError, "Error while writing to database")
                 } else {
                     call.respond(HttpStatusCode.OK)

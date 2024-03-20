@@ -2,7 +2,7 @@
 --     artist, group_admin, group_list_reader, group_list_writer, group_song_data, auth_tokens, song_audio,
 --     group_song_reader, group_song_writer, song, song_reader, song_writer, songs_list, song_in_list,
 --     list_reader, list_writer, user_in_group, users, users_group, user_song_data, song_part, song_performance,
---     old_encoded_password
+--     old_encoded_password, song_draft, new_song_draft, keys
 --     cascade;
 
 create table users (
@@ -173,6 +173,17 @@ create table new_song_draft (
     song_data text,
     updated_at timestamptz default now()
 );
+
+create table keys (
+    name varchar(30) primary key,
+    min_key int not null
+);
+
+insert into keys (name, min_key) values ('users', 1);
+insert into keys (name, min_key) values ('song', 1);
+insert into keys (name, min_key) values ('songs_list', 1);
+insert into keys (name, min_key) values ('users_group', 1);
+insert into keys (name, min_key) values ('artist', 1);
 
 -- drop function if exists readable_songs;
 -- drop function if exists writable_songs;

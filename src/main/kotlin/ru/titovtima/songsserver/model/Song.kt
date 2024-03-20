@@ -15,7 +15,7 @@ import java.util.UUID
 
 @Serializable
 data class Song (val id: Int, val name: String, val extra: String? = null, val key: Int? = null,
-                 val ownerId: Int? = null, val public: Boolean = false, val inMainList: Boolean = false,
+                 val ownerId: Int, val public: Boolean = false, val inMainList: Boolean = false,
                  val parts: List<SongPart>, val performances: List<SongPerformance>, val audios: List<String>) {
     companion object {
         fun readFromDb(id: Int, user: User?): Song? {
@@ -66,24 +66,42 @@ data class Song (val id: Int, val name: String, val extra: String? = null, val k
         }
     }
 
-    fun saveToDb(user: User): Boolean {
-        val queryCheckRights = dbConnection.prepareStatement("select id from writable_songs(?) where id = ?;")
-        queryCheckRights.setInt(1, user.id)
-        queryCheckRights.setInt(2, id)
-        val resultSet = queryCheckRights.executeQuery()
-        if (!resultSet.next()) return false
+    fun saveToDb(user: User, new: Boolean): Boolean {
+        if (!new) {
+            val queryCheckRights = dbConnection.prepareStatement("select id from writable_songs(?) where id = ?;")
+            queryCheckRights.setInt(1, user.id)
+            queryCheckRights.setInt(2, id)
+            val resultSet = queryCheckRights.executeQuery()
+            if (!resultSet.next()) return false
+        }
         dbConnection.autoCommit = false
         try {
-            val queryUpdate = dbConnection.prepareStatement(
-                "update song set name = ?, extra = ?, key = ?, public = ?, updated_at = now() where id = ?;")
-            queryUpdate.setString(1, name)
-            if (extra == null) queryUpdate.setNull(2, Types.VARCHAR)
-            else queryUpdate.setString(2, extra)
-            if (key == null) queryUpdate.setNull(3, Types.INTEGER)
-            else queryUpdate.setInt(3, key)
-            queryUpdate.setBoolean(4, public)
-            queryUpdate.setInt(5, id)
-            queryUpdate.executeUpdate()
+            if (new) {
+                val queryInsert = dbConnection.prepareStatement(
+                    "insert into song (id, name, extra, key, owner_id, public, in_main_list, created_at, updated_at) " +
+                        "values (?, ?, ?, ?, ?, ?, ?, now(), now());")
+                queryInsert.setInt(1, id)
+                queryInsert.setString(2, name)
+                if (extra == null) queryInsert.setNull(3, Types.VARCHAR)
+                else queryInsert.setString(3, extra)
+                if (key == null) queryInsert.setNull(4, Types.INTEGER)
+                else queryInsert.setInt(4, key)
+                queryInsert.setInt(5, ownerId)
+                queryInsert.setBoolean(6, public)
+                queryInsert.setBoolean(7, inMainList)
+                queryInsert.executeUpdate()
+            } else {
+                val queryUpdate = dbConnection.prepareStatement(
+                    "update song set name = ?, extra = ?, key = ?, public = ?, updated_at = now() where id = ?;")
+                queryUpdate.setString(1, name)
+                if (extra == null) queryUpdate.setNull(2, Types.VARCHAR)
+                else queryUpdate.setString(2, extra)
+                if (key == null) queryUpdate.setNull(3, Types.INTEGER)
+                else queryUpdate.setInt(3, key)
+                queryUpdate.setBoolean(4, public)
+                queryUpdate.setInt(5, id)
+                queryUpdate.executeUpdate()
+            }
 
             val queryDeleteSongParts = dbConnection.prepareStatement("delete from song_part where song_id = ?;")
             queryDeleteSongParts.setInt(1, id)
@@ -121,6 +139,38 @@ data class Song (val id: Int, val name: String, val extra: String? = null, val k
         dbConnection.commit()
         dbConnection.autoCommit = true
         return true
+    }
+}
+
+@Serializable
+data class NewSongData (val name: String, val extra: String? = null, val key: Int? = null,
+                        val public: Boolean = false, val inMainList: Boolean = false,
+                        val parts: List<SongPart>, val performances: List<SongPerformance>, val audios: List<String>) {
+
+    fun makeSong(user: User): Song? {
+        val id = getId() ?: return null
+        return Song(id, name, extra, key, user.id, public, inMainList, parts, performances, audios)
+    }
+
+    private fun getId(): Int? {
+        dbConnection.autoCommit = false
+        try {
+            val query = dbConnection.prepareStatement("select min_key from keys where name = 'song';")
+            val resultSet = query.executeQuery()
+            if (!resultSet.next()) throw Exception("No min key in database")
+            val newId = resultSet.getInt("min_key")
+            val queryUpdate = dbConnection.prepareStatement(
+                "update keys set min_key = min_key + 1 where name = 'song';")
+            queryUpdate.executeUpdate()
+            dbConnection.commit()
+            dbConnection.autoCommit = true
+            return newId
+        } catch (e: Exception) {
+            println(e)
+            dbConnection.rollback()
+            dbConnection.autoCommit = true
+            return null
+        }
     }
 }
 
