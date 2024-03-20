@@ -360,7 +360,9 @@ data class SongRights(val songId: Int, val readers: List<String>, val writers: L
 
 class SongAudio {
     companion object {
-        private const val S3_BUCKET = "songssite"
+        private const val S3_BUCKET = "songsserver"
+        private val endpointUrl = Url.parse("https://hb.vkcs.cloud/")
+        private const val region = "ru-msk"
 
         suspend fun loadAudioFromS3(uuid: String): ByteArray? {
             val getRequest = GetObjectRequest {
@@ -371,8 +373,8 @@ class SongAudio {
             var resultStream: ByteArray? = null
 
             S3Client.fromEnvironment {
-                endpointUrl = Url.parse("https://storage.yandexcloud.net/")
-                region = "ru-central1"
+                endpointUrl = SongAudio.endpointUrl
+                region = SongAudio.region
             }.use { s3 ->
                 s3.getObject(getRequest) { response ->
                     resultStream = response.body?.toByteArray()
@@ -382,7 +384,6 @@ class SongAudio {
             return resultStream
         }
 
-        // TODO: Error with big files
         suspend fun uploadAudioToS3(byteArray: ByteArray): String {
             var uuid = UUID.randomUUID().toString()
             while (!checkAudioUuidFree(uuid))
@@ -394,8 +395,8 @@ class SongAudio {
             }
 
             S3Client.fromEnvironment {
-                endpointUrl = Url.parse("https://storage.yandexcloud.net/")
-                region = "ru-central1"
+                endpointUrl = SongAudio.endpointUrl
+                region = SongAudio.region
             }.use { s3 ->
                 println(s3.putObject(putRequest).eTag)
             }
