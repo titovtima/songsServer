@@ -124,6 +124,10 @@ fun Application.configureRouting() {
                 }
                 if (call.parameters["id"] == "new") {
                     val songData = call.receive<NewSongData>()
+                    if (songData.public && !user.approved && !user.isAdmin) {
+                        call.respond(HttpStatusCode.Forbidden, "You cannot create public songs")
+                        return@post
+                    }
                     val song = songData.makeSong(user)
                     if (song == null) {
                         call.respond(HttpStatusCode.InternalServerError, "Error getting new song id")
@@ -141,9 +145,22 @@ fun Application.configureRouting() {
                     call.respond(HttpStatusCode.NotFound)
                     return@post
                 }
+                val oldSong = Song.readFromDb(songId, user)
+                if (oldSong == null) {
+                    call.respond(HttpStatusCode.NotFound)
+                    return@post
+                }
+                if (!Song.checkWriteAccess(songId, user)) {
+                    call.respond(HttpStatusCode.Forbidden)
+                    return@post
+                }
                 val song = call.receive<Song>()
                 if (song.id != songId) {
-                    call.respond(HttpStatusCode.BadRequest)
+                    call.respond(HttpStatusCode.BadRequest, "Song id should match id in url")
+                    return@post
+                }
+                if (!oldSong.public && song.public && !user.approved && !user.isAdmin) {
+                    call.respond(HttpStatusCode.Forbidden, "You cannot create public songs")
                     return@post
                 }
                 if (!song.saveToDb(user, false)) {

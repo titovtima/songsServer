@@ -64,16 +64,20 @@ data class Song (val id: Int, val name: String, val extra: String? = null, val k
             }
             return result
         }
-    }
 
-    fun saveToDb(user: User, new: Boolean): Boolean {
-        if (!new) {
+        fun checkWriteAccess(songId: Int, user: User): Boolean {
             val queryCheckRights = dbConnection.prepareStatement("select id from writable_songs(?) where id = ?;")
             queryCheckRights.setInt(1, user.id)
-            queryCheckRights.setInt(2, id)
+            queryCheckRights.setInt(2, songId)
             val resultSet = queryCheckRights.executeQuery()
-            if (!resultSet.next()) return false
+            return resultSet.next()
         }
+    }
+
+    private fun checkWriteAccess(user: User): Boolean = checkWriteAccess(id, user)
+
+    fun saveToDb(user: User, new: Boolean): Boolean {
+        if (!new && !checkWriteAccess(user)) return false
         dbConnection.autoCommit = false
         try {
             if (new) {
@@ -92,14 +96,16 @@ data class Song (val id: Int, val name: String, val extra: String? = null, val k
                 queryInsert.executeUpdate()
             } else {
                 val queryUpdate = dbConnection.prepareStatement(
-                    "update song set name = ?, extra = ?, key = ?, public = ?, updated_at = now() where id = ?;")
+                    "update song set name = ?, extra = ?, key = ?, public = ?, owner_id = ?, " +
+                            "updated_at = now() where id = ?;")
                 queryUpdate.setString(1, name)
                 if (extra == null) queryUpdate.setNull(2, Types.VARCHAR)
                 else queryUpdate.setString(2, extra)
                 if (key == null) queryUpdate.setNull(3, Types.INTEGER)
                 else queryUpdate.setInt(3, key)
                 queryUpdate.setBoolean(4, public)
-                queryUpdate.setInt(5, id)
+                queryUpdate.setInt(5, ownerId)
+                queryUpdate.setInt(6, id)
                 queryUpdate.executeUpdate()
             }
 

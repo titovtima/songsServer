@@ -200,32 +200,41 @@ create function readable_songs (reader_id int) returns table (
     created_at timestamptz,
     updated_at timestamptz
 ) as '
-select
-distinct s.id, s.name, s.extra, s.key, s.owner_id, s.public, s.in_main_list, s.created_at, s.updated_at
-from song s
-left join song_reader sr on s.id = sr.song_id
-left join song_writer sw on s.id = sw.song_id
-left join song_in_list sl on s.id = sl.song_id
-left join songs_list l on sl.list_id = l.id
-left join list_reader lr on sl.list_id = lr.list_id
-left join list_writer lw on sl.list_id = lw.list_id
-left join group_song_reader gsr on s.id = gsr.song_id
-left join group_song_writer gsw on s.id = gsw.song_id
-left join group_list_reader glr on sl.list_id = glr.list_id
-left join group_list_writer glw on sl.list_id = glw.list_id
-left join users_group g
-   on gsr.group_id = g.id or gsw.group_id = g.id
-   or glr.group_id = g.id or glw.group_id = g.id
-left join user_in_group ug
-   on gsr.group_id = ug.group_id or gsw.group_id = ug.group_id
-   or glr.group_id = ug.group_id or glw.group_id = ug.group_id
-left join group_admin ga
-   on gsr.group_id = ga.group_id or gsw.group_id = ga.group_id
-   or glr.group_id = ga.group_id or glw.group_id = ga.group_id
-where s.owner_id = reader_id or l.owner_id = reader_id or s.public or l.public
-   or sr.user_id = reader_id or sw.user_id = reader_id or lr.user_id = reader_id or lw.user_id = reader_id
-   or g.owner_id = reader_id or ug.user_id = reader_id or ga.user_id = reader_id
-order by s.id;
+do
+$do$
+begin
+if (select is_admin from users where id = reader_id) then
+    select * from song;
+else
+    select
+    distinct s.id, s.name, s.extra, s.key, s.owner_id, s.public, s.in_main_list, s.created_at, s.updated_at
+    from song s
+    left join song_reader sr on s.id = sr.song_id
+    left join song_writer sw on s.id = sw.song_id
+    left join song_in_list sl on s.id = sl.song_id
+    left join songs_list l on sl.list_id = l.id
+    left join list_reader lr on sl.list_id = lr.list_id
+    left join list_writer lw on sl.list_id = lw.list_id
+    left join group_song_reader gsr on s.id = gsr.song_id
+    left join group_song_writer gsw on s.id = gsw.song_id
+    left join group_list_reader glr on sl.list_id = glr.list_id
+    left join group_list_writer glw on sl.list_id = glw.list_id
+    left join users_group g
+        on gsr.group_id = g.id or gsw.group_id = g.id
+        or glr.group_id = g.id or glw.group_id = g.id
+    left join user_in_group ug
+        on gsr.group_id = ug.group_id or gsw.group_id = ug.group_id
+        or glr.group_id = ug.group_id or glw.group_id = ug.group_id
+    left join group_admin ga
+        on gsr.group_id = ga.group_id or gsw.group_id = ga.group_id
+        or glr.group_id = ga.group_id or glw.group_id = ga.group_id
+    where s.owner_id = reader_id or l.owner_id = reader_id or s.public or l.public
+        or sr.user_id = reader_id or sw.user_id = reader_id or lr.user_id = reader_id or lw.user_id = reader_id
+        or g.owner_id = reader_id or ug.user_id = reader_id or ga.user_id = reader_id
+    order by s.id;
+end if;
+end;
+$do$
 ' language sql;
 
 create function writable_songs (writer_id int) returns table (
@@ -239,25 +248,29 @@ create function writable_songs (writer_id int) returns table (
     created_at timestamptz,
     updated_at timestamptz
 ) as '
-select
-distinct s.id, s.name, s.extra, s.key, s.owner_id, s.public, s.in_main_list, s.created_at, s.updated_at
-from song s
-left join song_writer sw on s.id = sw.song_id
-left join song_in_list sl on s.id = sl.song_id
-left join songs_list l on sl.list_id = l.id
-left join list_writer lw on sl.list_id = lw.list_id
-left join group_song_writer gsw on s.id = gsw.song_id
-left join group_list_writer glw on sl.list_id = glw.list_id
-left join users_group g
-    on gsw.group_id = g.id or glw.group_id = g.id
-left join user_in_group ug
-    on gsw.group_id = ug.group_id or glw.group_id = ug.group_id
-left join group_admin ga
-    on gsw.group_id = ga.group_id or glw.group_id = ga.group_id
-where s.owner_id = writer_id or l.owner_id = writer_id
-   or sw.user_id = writer_id or lw.user_id = writer_id
-   or g.owner_id = writer_id or ug.user_id = writer_id or ga.user_id = writer_id
-order by s.id;
+(select
+    distinct s.id, s.name, s.extra, s.key, s.owner_id, s.public, s.in_main_list, s.created_at, s.updated_at
+    from song s
+    left join song_writer sw on s.id = sw.song_id
+    left join song_in_list sl on s.id = sl.song_id
+    left join songs_list l on sl.list_id = l.id
+    left join list_writer lw on sl.list_id = lw.list_id
+    left join group_song_writer gsw on s.id = gsw.song_id
+    left join group_list_writer glw on sl.list_id = glw.list_id
+    left join users_group g
+        on gsw.group_id = g.id or glw.group_id = g.id
+    left join user_in_group ug
+        on gsw.group_id = ug.group_id or glw.group_id = ug.group_id
+    left join group_admin ga
+        on gsw.group_id = ga.group_id or glw.group_id = ga.group_id
+    where s.owner_id = writer_id or l.owner_id = writer_id
+        or sw.user_id = writer_id or lw.user_id = writer_id
+        or g.owner_id = writer_id or ug.user_id = writer_id or ga.user_id = writer_id)
+union
+(select s.id, name, extra, key, owner_id, public, in_main_list, created_at, updated_at from users u
+    left join public_songs() s on true
+    where u.id = writer_id and (u.approved or u.is_admin))
+order by id;
 ' language sql;
 
 create function public_songs() returns table (
