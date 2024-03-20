@@ -88,6 +88,14 @@ fun Application.configureRouting() {
                     call.respond(HttpStatusCode.OK, songRights)
                 }
             }
+            get("/api/v1/songs") {
+                val principal = call.principal<JWTPrincipal>()
+                var username: String? = null
+                if (principal != null)
+                    username = principal.payload.getClaim("username").asString()
+                val user = username?.let { User.readFromDb(it) }
+                call.respond(ListOfSongsResponse(Song.readAllFromDb(user)))
+            }
         }
         authenticate("auth-jwt") {
             post("/api/v1/change_password") {
@@ -114,9 +122,7 @@ fun Application.configureRouting() {
             }
             post("/api/v1/song/{id}") {
                 val principal = call.principal<JWTPrincipal>()
-                var username: String? = null
-                if (principal != null)
-                    username = principal.payload.getClaim("username").asString()
+                val username = principal!!.payload.getClaim("username").asString()
                 val user = username?.let { it1 -> User.readFromDb(it1) }
                 if (user == null) {
                     call.respond(HttpStatusCode.Unauthorized)
@@ -178,3 +184,6 @@ data class ErrorResponse(val errorCode: Int, val details: String)
 
 @Serializable
 data class NewPassword(val password: String)
+
+@Serializable
+data class ListOfSongsResponse(val list: List<Song>, val count: Int = list.size)

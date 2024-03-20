@@ -22,21 +22,36 @@ data class Song (val id: Int, val name: String, val extra: String? = null, val k
             if (user == null) {
                 val query = dbConnection.prepareStatement("select * from public_songs() where id = ?;")
                 query.setInt(1, id)
-                return songFromResultSet(id, query.executeQuery())
+                return songFromResultSet(query.executeQuery())
             } else if (user.isAdmin) {
                 val query = dbConnection.prepareStatement("select * from song where id = ?;")
                 query.setInt(1, id)
-                return songFromResultSet(id, query.executeQuery())
+                return songFromResultSet(query.executeQuery())
             } else {
                 val query = dbConnection.prepareStatement("select * from readable_songs(?) where id = ?;")
                 query.setInt(1, user.id)
                 query.setInt(2, id)
-                return songFromResultSet(id, query.executeQuery())
+                return songFromResultSet(query.executeQuery())
             }
         }
 
-        private fun songFromResultSet(id: Int, resultSet: ResultSet): Song? {
+        fun readAllFromDb(user: User?): List<Song> {
+            if (user == null) {
+                val query = dbConnection.prepareStatement("select * from public_songs();")
+                return allSongsFromResultSet(query.executeQuery())
+            } else if (user.isAdmin) {
+                val query = dbConnection.prepareStatement("select * from song;")
+                return allSongsFromResultSet(query.executeQuery())
+            } else {
+                val query = dbConnection.prepareStatement("select * from readable_songs(?);")
+                query.setInt(1, user.id)
+                return allSongsFromResultSet(query.executeQuery())
+            }
+        }
+
+        private fun songFromResultSet(resultSet: ResultSet): Song? {
             if (resultSet.next()) {
+                val id = resultSet.getInt("id")
                 val name = resultSet.getString("name")
                 val extra = resultSet.getString("extra")
                 var key: Int? = resultSet.getInt("key")
@@ -51,6 +66,16 @@ data class Song (val id: Int, val name: String, val extra: String? = null, val k
             } else {
                 return null
             }
+        }
+
+        private fun allSongsFromResultSet(resultSet: ResultSet): List<Song> {
+            val result = mutableListOf<Song>()
+            var song = songFromResultSet(resultSet)
+            while (song != null) {
+                result.add(song)
+                song = songFromResultSet(resultSet)
+            }
+            return result
         }
 
         private fun getAllSongAudio(songId: Int): List<String> {
