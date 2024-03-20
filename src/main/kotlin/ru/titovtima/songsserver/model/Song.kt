@@ -49,6 +49,20 @@ data class Song (val id: Int, val name: String, val extra: String? = null, val k
             }
         }
 
+        fun readMainListFromDb(user: User?): List<Song> {
+            if (user == null) {
+                val query = dbConnection.prepareStatement("select * from public_songs() where in_main_list = true;")
+                return allSongsFromResultSet(query.executeQuery())
+            } else if (user.isAdmin) {
+                val query = dbConnection.prepareStatement("select * from song where in_main_list = true;")
+                return allSongsFromResultSet(query.executeQuery())
+            } else {
+                val query = dbConnection.prepareStatement("select * from readable_songs(?) where in_main_list = true;")
+                query.setInt(1, user.id)
+                return allSongsFromResultSet(query.executeQuery())
+            }
+        }
+
         private fun songFromResultSet(resultSet: ResultSet): Song? {
             if (resultSet.next()) {
                 val id = resultSet.getInt("id")

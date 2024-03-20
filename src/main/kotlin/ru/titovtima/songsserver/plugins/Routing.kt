@@ -96,6 +96,14 @@ fun Application.configureRouting() {
                 val user = username?.let { User.readFromDb(it) }
                 call.respond(ListOfSongsResponse(Song.readAllFromDb(user)))
             }
+            get("/api/v1/songs/main-list") {
+                val principal = call.principal<JWTPrincipal>()
+                var username: String? = null
+                if (principal != null)
+                    username = principal.payload.getClaim("username").asString()
+                val user = username?.let { User.readFromDb(it) }
+                call.respond(ListOfSongsResponse(Song.readMainListFromDb(user)))
+            }
         }
         authenticate("auth-jwt") {
             post("/api/v1/change_password") {
