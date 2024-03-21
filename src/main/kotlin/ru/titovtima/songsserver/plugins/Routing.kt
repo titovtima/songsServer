@@ -53,6 +53,19 @@ fun Application.configureRouting() {
             call.response.header("Content-Type", "audio/mpeg")
             call.respond(byteArray)
         }
+        get("/api/v1/user/{username}") {
+            val username = call.parameters["username"]
+            if (username == null) {
+                call.respond(HttpStatusCode.NotFound)
+                return@get
+            }
+            val user = User.readFromDb(username)
+            if (user == null) {
+                call.respond(HttpStatusCode.NotFound)
+                return@get
+            }
+            call.respond(user)
+        }
         authenticate("auth-jwt", strategy = AuthenticationStrategy.Optional) {
             get("/api/v1/song/{id}") {
                 val principal = call.principal<JWTPrincipal>()
