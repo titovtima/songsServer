@@ -185,11 +185,7 @@ insert into keys (name, min_key) values ('songs_list', 1);
 insert into keys (name, min_key) values ('users_group', 1);
 insert into keys (name, min_key) values ('artist', 1);
 
--- drop function if exists readable_songs;
--- drop function if exists writable_songs;
--- drop function if exists public_songs;
-
-create function readable_songs (reader_id int) returns table (
+create or replace function public_songs() returns table (
     id int,
     name varchar(256),
     extra text,
@@ -199,14 +195,33 @@ create function readable_songs (reader_id int) returns table (
     in_main_list boolean,
     created_at timestamptz,
     updated_at timestamptz
-) as '
-do
-$do$
+) as $$
+select
+distinct s.id, s.name, s.extra, s.key, s.owner_id, s.public, s.in_main_list, s.created_at, s.updated_at
+from song s
+left join song_in_list sl on s.id = sl.song_id
+left join songs_list l on sl.list_id = l.id
+where s.public or l.public
+order by s.id;
+$$ language sql;
+
+create or replace function readable_songs (reader_id int) returns table (
+    id int,
+    name varchar(256),
+    extra text,
+    key int,
+    owner_id int,
+    public boolean,
+    in_main_list boolean,
+    created_at timestamptz,
+    updated_at timestamptz
+) as
+$$
 begin
-if (select is_admin from users where id = reader_id) then
-    select * from song;
+if (select is_admin from users u where u.id = reader_id) then
+    return query (select * from song);
 else
-    select
+    return query (select
     distinct s.id, s.name, s.extra, s.key, s.owner_id, s.public, s.in_main_list, s.created_at, s.updated_at
     from song s
     left join song_reader sr on s.id = sr.song_id
@@ -231,13 +246,12 @@ else
     where s.owner_id = reader_id or l.owner_id = reader_id or s.public or l.public
         or sr.user_id = reader_id or sw.user_id = reader_id or lr.user_id = reader_id or lw.user_id = reader_id
         or g.owner_id = reader_id or ug.user_id = reader_id or ga.user_id = reader_id
-    order by s.id;
+    order by s.id);
 end if;
 end;
-$do$
-' language sql;
+$$ language plpgsql;
 
-create function writable_songs (writer_id int) returns table (
+create or replace function writable_songs (writer_id int) returns table (
     id int,
     name varchar(256),
     extra text,
@@ -247,8 +261,12 @@ create function writable_songs (writer_id int) returns table (
     in_main_list boolean,
     created_at timestamptz,
     updated_at timestamptz
-) as '
-(select
+) as $$
+begin
+if (select is_admin from users u where u.id = writer_id) then
+    return query (select * from song);
+else
+    return query (select
     distinct s.id, s.name, s.extra, s.key, s.owner_id, s.public, s.in_main_list, s.created_at, s.updated_at
     from song s
     left join song_writer sw on s.id = sw.song_id
@@ -266,29 +284,11 @@ create function writable_songs (writer_id int) returns table (
     where s.owner_id = writer_id or l.owner_id = writer_id
         or sw.user_id = writer_id or lw.user_id = writer_id
         or g.owner_id = writer_id or ug.user_id = writer_id or ga.user_id = writer_id)
-union
-(select s.id, name, extra, key, owner_id, public, in_main_list, created_at, updated_at from users u
-    left join public_songs() s on true
+    union
+    (select s.id, s.name, s.extra, s.key, s.owner_id, s.public, s.in_main_list, s.created_at, s.updated_at
+    from users u left join public_songs() s on true
     where u.id = writer_id and (u.approved or u.is_admin))
-order by id;
-' language sql;
-
-create function public_songs() returns table (
-    id int,
-    name varchar(256),
-    extra text,
-    key int,
-    owner_id int,
-    public boolean,
-    in_main_list boolean,
-    created_at timestamptz,
-    updated_at timestamptz
-) as '
-select
-distinct s.id, s.name, s.extra, s.key, s.owner_id, s.public, s.in_main_list, s.created_at, s.updated_at
-from song s
-left join song_in_list sl on s.id = sl.song_id
-left join songs_list l on sl.list_id = l.id
-where s.public or l.public
-order by s.id;
-' language sql;
+    order by id;
+end if;
+end;
+$$ language plpgsql;
