@@ -372,13 +372,16 @@ class SongAudio {
 
             var resultStream: ByteArray? = null
 
-            S3Client.fromEnvironment {
-                endpointUrl = SongAudio.endpointUrl
-                region = SongAudio.region
-            }.use { s3 ->
-                s3.getObject(getRequest) { response ->
-                    resultStream = response.body?.toByteArray()
+            try {
+                S3Client.fromEnvironment {
+                    endpointUrl = SongAudio.endpointUrl
+                    region = SongAudio.region
+                }.use { s3 ->
+                    s3.getObject(getRequest) { response ->
+                        resultStream = response.body?.toByteArray()
+                    }
                 }
+            } catch (_: Exception) {
             }
 
             return resultStream
