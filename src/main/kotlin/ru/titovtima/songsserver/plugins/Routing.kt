@@ -18,12 +18,21 @@ fun Application.configureRouting() {
     routing {
         post("/api/v1/register") {
             val userLogin = call.receive<UserLogin>()
+            if (!userLogin.checkRegex()) {
+                call.respond(HttpStatusCode.BadRequest, ErrorResponse(1,
+                    "Username should match ${Authorization.usernameRegex.pattern} and " +
+                            "password should match ${Authorization.passwordRegex.pattern}"))
+                return@post
+            }
             val success = Authorization.register(userLogin)
             when (success) {
                 0 -> call.respond(HttpStatusCode.Created)
-                1 -> call.respond(HttpStatusCode.BadRequest, ErrorResponse(1, "Username is already taken"))
-                2 -> call.respond(HttpStatusCode.InternalServerError, "Error getting new id")
-                else -> call.respond(HttpStatusCode.InternalServerError)
+                1 -> call.respond(HttpStatusCode.BadRequest,
+                    ErrorResponse(2, "Username is already taken"))
+                2 -> call.respond(HttpStatusCode.InternalServerError,
+                    ErrorResponse(3, "Error getting new id"))
+                else -> call.respond(HttpStatusCode.InternalServerError,
+                    ErrorResponse(4, "Server error"))
             }
         }
         post("/api/v1/login") {
@@ -130,6 +139,11 @@ fun Application.configureRouting() {
                     return@post
                 }
                 val newPassword = call.receive<NewPassword>().password
+                if (!Authorization.passwordRegex.matches(newPassword)) {
+                    call.respond(HttpStatusCode.BadRequest,
+                        "Password should match ${Authorization.passwordRegex.pattern}")
+                    return@post
+                }
                 Authorization.changePassword(user, newPassword)
                 call.respond(HttpStatusCode.OK)
             }

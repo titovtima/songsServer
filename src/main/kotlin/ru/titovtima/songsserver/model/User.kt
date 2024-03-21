@@ -4,9 +4,6 @@ import kotlinx.serialization.Serializable
 import ru.titovtima.songsserver.dbConnection
 
 @Serializable
-data class UserLogin(val username: String, val password: String)
-
-@Serializable
 class User(val id: Int, val username: String, val isAdmin: Boolean, val approved: Boolean) {
     companion object {
         fun readFromDb(id: Int): User? {

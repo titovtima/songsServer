@@ -1,11 +1,20 @@
 package ru.titovtima.songsserver.model
 
+import kotlinx.serialization.Serializable
 import ru.titovtima.songsserver.Encoder
 import ru.titovtima.songsserver.OldEncoder
 import ru.titovtima.songsserver.dbConnection
 
+@Serializable
+data class UserLogin(val username: String, val password: String) {
+    fun checkRegex() = Authorization.usernameRegex.matches(username) && Authorization.passwordRegex.matches(password)
+}
+
 class Authorization {
     companion object {
+        val usernameRegex = Regex("[a-zA-Zа-яА-Я0-9_.@-]{3,64}")
+        val passwordRegex = Regex("[a-zA-Zа-яА-Я0-9_#?!@\$%^&*-]{6,128}")
+
         fun register(userLogin: UserLogin): Int {
             if (!checkUsernameFree(userLogin.username))
                 return 1
@@ -15,7 +24,7 @@ class Authorization {
             query.setInt(1, newId)
             query.setString(2, userLogin.username)
             query.setString(3, encodedPassword)
-            query.execute()
+            query.executeUpdate()
             return 0
         }
 
@@ -36,7 +45,7 @@ class Authorization {
                 val queryUpdate = dbConnection.prepareStatement(
                     "update users set last_login = now() where username = ?;")
                 queryUpdate.setString(1, userLogin.username)
-                queryUpdate.execute()
+                queryUpdate.executeUpdate()
                 return true
             } else {
                 return checkPasswordInOldEncoding(userLogin)
@@ -54,13 +63,13 @@ class Authorization {
                 val queryUpdate = dbConnection.prepareStatement(
                     "update users set last_login = now() where username = ?;")
                 queryUpdate.setString(1, userLogin.username)
-                queryUpdate.execute()
+                queryUpdate.executeUpdate()
                 val encodedPassword = Encoder.encodeString(userLogin.password).toString()
                 val queryWritePassword = dbConnection.prepareStatement(
                     "update users set password = ? where username = ?;")
                 queryWritePassword.setString(1, encodedPassword)
                 queryWritePassword.setString(2, userLogin.username)
-                queryWritePassword.execute()
+                queryWritePassword.executeUpdate()
                 return true
             } else {
                 return false
@@ -73,7 +82,7 @@ class Authorization {
                 "update users set password = ?, last_change_password = now() where id = ?;")
             query.setString(1, encodedPassword)
             query.setInt(2, user.id)
-            query.execute()
+            query.executeUpdate()
         }
 
         private fun getNewUserId(): Int? {
