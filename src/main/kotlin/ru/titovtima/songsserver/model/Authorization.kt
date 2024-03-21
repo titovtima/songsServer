@@ -6,15 +6,17 @@ import ru.titovtima.songsserver.dbConnection
 
 class Authorization {
     companion object {
-        fun register(userLogin: UserLogin): Boolean {
+        fun register(userLogin: UserLogin): Int {
             if (!checkUsernameFree(userLogin.username))
-                return false
+                return 1
             val encodedPassword = Encoder.encodeString(userLogin.password).toString()
-            val query = dbConnection.prepareStatement("insert into users(username, password) values (?, ?);")
-            query.setString(1, userLogin.username)
-            query.setString(2, encodedPassword)
+            val newId = getNewUserId() ?: 2
+            val query = dbConnection.prepareStatement("insert into users(id, username, password) values (?, ?, ?);")
+            query.setInt(1, newId)
+            query.setString(2, userLogin.username)
+            query.setString(3, encodedPassword)
             query.execute()
-            return true
+            return 0
         }
 
         private fun checkUsernameFree(username: String): Boolean {
@@ -72,6 +74,27 @@ class Authorization {
             query.setString(1, encodedPassword)
             query.setInt(2, user.id)
             query.execute()
+        }
+
+        private fun getNewUserId(): Int? {
+            dbConnection.autoCommit = false
+            try {
+                val query = dbConnection.prepareStatement("select min_key from keys where name = 'users';")
+                val resultSet = query.executeQuery()
+                if (!resultSet.next()) throw Exception("No min key in database")
+                val newId = resultSet.getInt("min_key")
+                val queryUpdate = dbConnection.prepareStatement(
+                    "update keys set min_key = min_key + 1 where name = 'users';")
+                queryUpdate.executeUpdate()
+                dbConnection.commit()
+                dbConnection.autoCommit = true
+                return newId
+            } catch (e: Exception) {
+                println(e)
+                dbConnection.rollback()
+                dbConnection.autoCommit = true
+                return null
+            }
         }
     }
 }

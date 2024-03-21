@@ -19,10 +19,12 @@ fun Application.configureRouting() {
         post("/api/v1/register") {
             val userLogin = call.receive<UserLogin>()
             val success = Authorization.register(userLogin)
-            if (success)
-                call.respond(HttpStatusCode.Created)
-            else
-                call.respond(HttpStatusCode.BadRequest, ErrorResponse(1, "Username is already taken"))
+            when (success) {
+                0 -> call.respond(HttpStatusCode.Created)
+                1 -> call.respond(HttpStatusCode.BadRequest, ErrorResponse(1, "Username is already taken"))
+                2 -> call.respond(HttpStatusCode.InternalServerError, "Error getting new id")
+                else -> call.respond(HttpStatusCode.InternalServerError)
+            }
         }
         post("/api/v1/login") {
             val userLogin = call.receive<UserLogin>()
