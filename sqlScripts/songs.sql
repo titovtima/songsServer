@@ -237,12 +237,8 @@ else
     left join users_group g
         on gsr.group_id = g.id or gsw.group_id = g.id
         or glr.group_id = g.id or glw.group_id = g.id
-    left join user_in_group ug
-        on gsr.group_id = ug.group_id or gsw.group_id = ug.group_id
-        or glr.group_id = ug.group_id or glw.group_id = ug.group_id
-    left join group_admin ga
-        on gsr.group_id = ga.group_id or gsw.group_id = ga.group_id
-        or glr.group_id = ga.group_id or glw.group_id = ga.group_id
+    left join user_in_group ug on g.id = ug.group_id
+    left join group_admin ga on g.id = ga.group_id
     where s.owner_id = reader_id or l.owner_id = reader_id or s.public or l.public
         or sr.user_id = reader_id or sw.user_id = reader_id or lr.user_id = reader_id or lw.user_id = reader_id
         or g.owner_id = reader_id or ug.user_id = reader_id or ga.user_id = reader_id
@@ -275,12 +271,9 @@ else
     left join list_writer lw on sl.list_id = lw.list_id
     left join group_song_writer gsw on s.id = gsw.song_id
     left join group_list_writer glw on sl.list_id = glw.list_id
-    left join users_group g
-        on gsw.group_id = g.id or glw.group_id = g.id
-    left join user_in_group ug
-        on gsw.group_id = ug.group_id or glw.group_id = ug.group_id
-    left join group_admin ga
-        on gsw.group_id = ga.group_id or glw.group_id = ga.group_id
+    left join users_group g on gsw.group_id = g.id or glw.group_id = g.id
+    left join user_in_group ug on g.id = ug.group_id
+    left join group_admin ga on g.id = ga.group_id
     where s.owner_id = writer_id or l.owner_id = writer_id
         or sw.user_id = writer_id or lw.user_id = writer_id
         or g.owner_id = writer_id or ug.user_id = writer_id or ga.user_id = writer_id)
