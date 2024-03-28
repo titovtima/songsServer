@@ -14,8 +14,8 @@ import java.util.Collections
 import java.util.UUID
 
 @Serializable
-data class Song (val id: Int, val name: String, val extra: String? = null, val key: Int? = null,
-                 val ownerId: Int, val public: Boolean = false, val inMainList: Boolean = false,
+data class Song (val id: Int, val name: String, val extra: String?, val key: Int?,
+                 val ownerId: Int, val public: Boolean, val inMainList: Boolean,
                  val parts: List<SongPart>, val performances: List<SongPerformance>, val audios: List<String>) {
     companion object {
         fun readFromDb(id: Int, user: User?): Song? {
@@ -179,8 +179,8 @@ data class Song (val id: Int, val name: String, val extra: String? = null, val k
 
 @Serializable
 data class NewSongData (val name: String, val extra: String? = null, val key: Int? = null,
-                        val public: Boolean = false, val inMainList: Boolean = false,
-                        val parts: List<SongPart>, val performances: List<SongPerformance>, val audios: List<String>) {
+                        val public: Boolean = false, val inMainList: Boolean = false, val parts: List<SongPart>,
+                        val performances: List<SongPerformance> = listOf(), val audios: List<String> = listOf()) {
 
     fun makeSong(user: User): Song? {
         val id = getId() ?: return null
@@ -219,7 +219,7 @@ fun songPartTypeFromInt(int: Int) = when (int) {
 }
 
 @Serializable
-data class SongPart(val type: SongPartType, val ord: Int, val name: String?, val data: String, val key: Int?) {
+data class SongPart(val type: SongPartType, val ord: Int, val name: String? = null, val data: String, val key: Int? = null) {
     companion object {
         fun getAllSongParts(songId: Int): List<SongPart> {
             val query = dbConnection.prepareStatement("select * from song_part where song_id = ?;")
