@@ -185,20 +185,33 @@ insert into keys (name, min_key) values ('songs_list', 1);
 insert into keys (name, min_key) values ('users_group', 1);
 insert into keys (name, min_key) values ('artist', 1);
 
+-- drop view if exists song_with_username;
+
+create view song_with_username(
+    id, name, extra, key, owner, public, in_main_list, created_at, updated_at
+) as
+select
+s.id, s.name, s.extra, s.key, u.username as owner, s.public, s.in_main_list, s.created_at, s.updated_at
+from song s left join users u on s.owner_id = u.id;
+
+-- drop function if exists public_songs;
+-- drop function if exists readable_songs;
+-- drop function if exists writable_songs;
+
 create or replace function public_songs() returns table (
     id int,
     name varchar(256),
     extra text,
     key int,
-    owner_id int,
+    owner varchar(64),
     public boolean,
     in_main_list boolean,
     created_at timestamptz,
     updated_at timestamptz
 ) as $$
 select
-distinct s.id, s.name, s.extra, s.key, s.owner_id, s.public, s.in_main_list, s.created_at, s.updated_at
-from song s
+distinct s.id, s.name, s.extra, s.key, s.owner, s.public, s.in_main_list, s.created_at, s.updated_at
+from song_with_username s
 left join song_in_list sl on s.id = sl.song_id
 left join songs_list l on sl.list_id = l.id
 where s.public or l.public
@@ -210,7 +223,7 @@ create or replace function readable_songs (reader_id int) returns table (
     name varchar(256),
     extra text,
     key int,
-    owner_id int,
+    owner varchar(64),
     public boolean,
     in_main_list boolean,
     created_at timestamptz,
@@ -218,11 +231,11 @@ create or replace function readable_songs (reader_id int) returns table (
 ) as
 $$
 begin
-if (select is_admin from users u where u.id = reader_id) then
-    return query (select * from song);
+if (select u.is_admin from users u where u.id = reader_id) then
+    return query (select * from song_with_username);
 else
     return query (select
-    distinct s.id, s.name, s.extra, s.key, s.owner_id, s.public, s.in_main_list, s.created_at, s.updated_at
+    distinct s.id, s.name, s.extra, s.key, u.username as owner, s.public, s.in_main_list, s.created_at, s.updated_at
     from song s
     left join song_reader sr on s.id = sr.song_id
     left join song_writer sw on s.id = sw.song_id
@@ -239,6 +252,7 @@ else
         or glr.group_id = g.id or glw.group_id = g.id
     left join user_in_group ug on g.id = ug.group_id
     left join group_admin ga on g.id = ga.group_id
+    left join users u on s.owner_id = u.id
     where s.owner_id = reader_id or l.owner_id = reader_id or s.public or l.public
         or sr.user_id = reader_id or sw.user_id = reader_id or lr.user_id = reader_id or lw.user_id = reader_id
         or g.owner_id = reader_id or ug.user_id = reader_id or ga.user_id = reader_id
@@ -252,7 +266,7 @@ create or replace function writable_songs (writer_id int) returns table (
     name varchar(256),
     extra text,
     key int,
-    owner_id int,
+    owner varchar(64),
     public boolean,
     in_main_list boolean,
     created_at timestamptz,
@@ -260,10 +274,10 @@ create or replace function writable_songs (writer_id int) returns table (
 ) as $$
 begin
 if (select is_admin from users u where u.id = writer_id) then
-    return query (select * from song);
+    return query (select * from song_with_username);
 else
     return query (select
-    distinct s.id, s.name, s.extra, s.key, s.owner_id, s.public, s.in_main_list, s.created_at, s.updated_at
+    distinct s.id, s.name, s.extra, s.key, u.username as owner, s.public, s.in_main_list, s.created_at, s.updated_at
     from song s
     left join song_writer sw on s.id = sw.song_id
     left join song_in_list sl on s.id = sl.song_id
@@ -274,11 +288,12 @@ else
     left join users_group g on gsw.group_id = g.id or glw.group_id = g.id
     left join user_in_group ug on g.id = ug.group_id
     left join group_admin ga on g.id = ga.group_id
+    left join users u on s.owner_id = u.id
     where s.owner_id = writer_id or l.owner_id = writer_id
         or sw.user_id = writer_id or lw.user_id = writer_id
         or g.owner_id = writer_id or ug.user_id = writer_id or ga.user_id = writer_id)
     union
-    (select s.id, s.name, s.extra, s.key, s.owner_id, s.public, s.in_main_list, s.created_at, s.updated_at
+    (select s.id, s.name, s.extra, s.key, s.owner, s.public, s.in_main_list, s.created_at, s.updated_at
     from users u left join public_songs() s on true
     where u.id = writer_id and (u.approved or u.is_admin))
     order by id;

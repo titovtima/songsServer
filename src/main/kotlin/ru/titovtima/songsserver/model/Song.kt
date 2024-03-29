@@ -15,7 +15,7 @@ import java.util.UUID
 
 @Serializable
 data class Song (val id: Int, val name: String, val extra: String?, val key: Int?,
-                 val ownerId: Int, val public: Boolean, val inMainList: Boolean,
+                 val owner: String, val public: Boolean, val inMainList: Boolean,
                  val parts: List<SongPart>, val performances: List<SongPerformance>, val audios: List<String>) {
     companion object {
         fun readFromDb(id: Int, user: User?): Song? {
@@ -60,13 +60,13 @@ data class Song (val id: Int, val name: String, val extra: String?, val key: Int
                 val extra = resultSet.getString("extra")
                 var key: Int? = resultSet.getInt("key")
                 if (resultSet.wasNull()) key = null
-                val ownerId = resultSet.getInt("owner_id")
+                val owner = resultSet.getString("owner")
                 val public = resultSet.getBoolean("public")
                 val inMainList = resultSet.getBoolean("in_main_list")
                 val songParts = SongPart.getAllSongParts(id)
                 val songPerformances = SongPerformance.getAllSongPerformances(id)
                 val songAudios = getAllSongAudio(id)
-                return Song(id, name, extra, key, ownerId, public, inMainList, songParts, songPerformances, songAudios)
+                return Song(id, name, extra, key, owner, public, inMainList, songParts, songPerformances, songAudios)
             } else {
                 return null
             }
@@ -107,6 +107,7 @@ data class Song (val id: Int, val name: String, val extra: String?, val key: Int
 
     fun saveToDb(user: User, new: Boolean): Boolean {
         if (!new && !checkWriteAccess(user)) return false
+        val userOwner = User.readFromDb(owner) ?: return false
         dbConnection.autoCommit = false
         try {
             if (new) {
@@ -119,7 +120,7 @@ data class Song (val id: Int, val name: String, val extra: String?, val key: Int
                 else queryInsert.setString(3, extra)
                 if (key == null) queryInsert.setNull(4, Types.INTEGER)
                 else queryInsert.setInt(4, key)
-                queryInsert.setInt(5, ownerId)
+                queryInsert.setInt(5, userOwner.id)
                 queryInsert.setBoolean(6, public)
                 queryInsert.setBoolean(7, inMainList)
                 queryInsert.executeUpdate()
@@ -133,7 +134,7 @@ data class Song (val id: Int, val name: String, val extra: String?, val key: Int
                 if (key == null) queryUpdate.setNull(3, Types.INTEGER)
                 else queryUpdate.setInt(3, key)
                 queryUpdate.setBoolean(4, public)
-                queryUpdate.setInt(5, ownerId)
+                queryUpdate.setInt(5, userOwner.id)
                 queryUpdate.setInt(6, id)
                 queryUpdate.executeUpdate()
             }
@@ -184,7 +185,7 @@ data class NewSongData (val name: String, val extra: String? = null, val key: In
 
     fun makeSong(user: User): Song? {
         val id = getId() ?: return null
-        return Song(id, name, extra, key, user.id, public, inMainList, parts, performances, audios)
+        return Song(id, name, extra, key, user.username, public, inMainList, parts, performances, audios)
     }
 
     private fun getId(): Int? {
