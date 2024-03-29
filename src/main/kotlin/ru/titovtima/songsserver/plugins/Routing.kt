@@ -94,6 +94,24 @@ fun Application.configureRouting() {
                     call.respond(HttpStatusCode.OK, song)
                 }
             }
+            get("/api/v1/song/{id}/info") {
+                val principal = call.principal<JWTPrincipal>()
+                var username: String? = null
+                if (principal != null)
+                    username = principal.payload.getClaim("username").asString()
+                val songId = call.parameters["id"]?.toIntOrNull()
+                if (songId == null) {
+                    call.respond(HttpStatusCode.NotFound)
+                    return@get
+                }
+                val user = username?.let { User.readFromDb(it) }
+                val songInfo = SongInfo.readFromDb(songId, user)
+                if (songInfo == null) {
+                    call.respond(HttpStatusCode.NotFound)
+                } else {
+                    call.respond(HttpStatusCode.OK, songInfo)
+                }
+            }
             get("/api/v1/song/{id}/rights") {
                 val principal = call.principal<JWTPrincipal>()
                 var username: String? = null
@@ -120,6 +138,14 @@ fun Application.configureRouting() {
                 val user = username?.let { User.readFromDb(it) }
                 call.respond(ListOfSongsResponse(Song.readAllFromDb(user)))
             }
+            get("/api/v1/songs/info") {
+                val principal = call.principal<JWTPrincipal>()
+                var username: String? = null
+                if (principal != null)
+                    username = principal.payload.getClaim("username").asString()
+                val user = username?.let { User.readFromDb(it) }
+                call.respond(ListOfSongsInfoResponse(SongInfo.readAllFromDb(user)))
+            }
             get("/api/v1/songs/main-list") {
                 val principal = call.principal<JWTPrincipal>()
                 var username: String? = null
@@ -127,6 +153,14 @@ fun Application.configureRouting() {
                     username = principal.payload.getClaim("username").asString()
                 val user = username?.let { User.readFromDb(it) }
                 call.respond(ListOfSongsResponse(Song.readMainListFromDb(user)))
+            }
+            get("/api/v1/songs/info/main-list") {
+                val principal = call.principal<JWTPrincipal>()
+                var username: String? = null
+                if (principal != null)
+                    username = principal.payload.getClaim("username").asString()
+                val user = username?.let { User.readFromDb(it) }
+                call.respond(ListOfSongsInfoResponse(SongInfo.readMainListFromDb(user)))
             }
         }
         authenticate("auth-jwt") {
@@ -224,3 +258,6 @@ data class NewPassword(val password: String)
 
 @Serializable
 data class ListOfSongsResponse(val list: List<Song>, val count: Int = list.size)
+
+@Serializable
+data class ListOfSongsInfoResponse(val list: List<SongInfo>, val count: Int = list.size)

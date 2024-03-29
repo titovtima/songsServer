@@ -405,3 +405,64 @@ class SongAudio {
         }
     }
 }
+
+@Serializable
+data class SongInfo(val id: Int, val name: String, val public: Boolean, val inMainList: Boolean) {
+    companion object {
+        fun readFromDb(id: Int, user: User?): SongInfo? {
+            if (user == null) {
+                val query = dbConnection.prepareStatement(
+                    "select id, name, public, in_main_list from public_songs() where id = ?;")
+                query.setInt(1, id)
+                return songInfoFromResultSet(query.executeQuery())
+            } else {
+                val query = dbConnection.prepareStatement(
+                    "select id, name, public, in_main_list from readable_songs(?) where id = ?;")
+                query.setInt(1, user.id)
+                query.setInt(2, id)
+                return songInfoFromResultSet(query.executeQuery())
+            }
+        }
+
+        fun readAllFromDb(user: User?): List<SongInfo> {
+            if (user == null) {
+                val query = dbConnection.prepareStatement("select * from public_songs();")
+                return allSongsInfoFromResultSet(query.executeQuery())
+            } else {
+                val query = dbConnection.prepareStatement("select * from readable_songs(?);")
+                query.setInt(1, user.id)
+                return allSongsInfoFromResultSet(query.executeQuery())
+            }
+        }
+
+        fun readMainListFromDb(user: User?): List<SongInfo> {
+            if (user == null) {
+                val query = dbConnection.prepareStatement("select * from public_songs() where in_main_list = true;")
+                return allSongsInfoFromResultSet(query.executeQuery())
+            } else {
+                val query = dbConnection.prepareStatement("select * from readable_songs(?) where in_main_list = true;")
+                query.setInt(1, user.id)
+                return allSongsInfoFromResultSet(query.executeQuery())
+            }
+        }
+
+        private fun songInfoFromResultSet(resultSet: ResultSet): SongInfo? {
+            if (!resultSet.next()) return null
+            val id = resultSet.getInt("id")
+            val name = resultSet.getString("name")
+            val public = resultSet.getBoolean("public")
+            val inMainList = resultSet.getBoolean("in_main_list")
+            return SongInfo(id, name, public, inMainList)
+        }
+
+        private fun allSongsInfoFromResultSet(resultSet: ResultSet): List<SongInfo> {
+            val result = mutableListOf<SongInfo>()
+            var songInfo = songInfoFromResultSet(resultSet)
+            while (songInfo != null) {
+                result.add(songInfo)
+                songInfo = songInfoFromResultSet(resultSet)
+            }
+            return result
+        }
+    }
+}
