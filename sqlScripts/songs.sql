@@ -186,6 +186,7 @@ insert into keys (name, min_key) values ('users_group', 1);
 insert into keys (name, min_key) values ('artist', 1);
 
 -- drop view if exists song_with_username;
+-- drop view if exists songs_list_with_username;
 
 create view song_with_username(
     id, name, extra, key, owner, public, in_main_list, created_at, updated_at
@@ -194,9 +195,18 @@ select
 s.id, s.name, s.extra, s.key, u.username as owner, s.public, s.in_main_list, s.created_at, s.updated_at
 from song s left join users u on s.owner_id = u.id;
 
+create view songs_list_with_username(
+    id, name, public, owner
+) as
+select
+    l.id, l.name, l.public, u.username as owner
+from songs_list l left join users u on l.owner_id = u.id;
+
 -- drop function if exists public_songs;
 -- drop function if exists readable_songs;
 -- drop function if exists writable_songs;
+-- drop function if exists readable_lists;
+-- drop function if exists writable_lists;
 
 create or replace function public_songs() returns table (
     id int,
@@ -296,6 +306,63 @@ else
     (select s.id, s.name, s.extra, s.key, s.owner, s.public, s.in_main_list, s.created_at, s.updated_at
     from users u left join public_songs() s on true
     where u.id = writer_id and (u.approved or u.is_admin))
+    order by id;
+end if;
+end;
+$$ language plpgsql;
+
+create or replace function readable_lists(reader_id int) returns table (
+    id int,
+    name varchar(256),
+    public boolean,
+    owner varchar(64)
+) as $$
+begin
+if (select u.is_admin from users u where u.id = reader_id) then
+    return query (select * from songs_list_with_username);
+else
+    return query (select
+    distinct l.id, l.name, l.public, u.username as owner from songs_list l
+    left join list_reader lr on l.id = lr.list_id
+    left join list_writer lw on l.id = lw.list_id
+    left join group_list_reader glr on l.id = glr.list_id
+    left join group_list_writer glw on l.id = glw.list_id
+    left join users_group g on glr.group_id = g.id or glw.group_id = g.id
+    left join user_in_group ug on g.id = ug.group_id
+    left join group_admin ga on g.id = ga.group_id
+    left join users u on l.owner_id = u.id
+    where l.public or l.owner_id = reader_id or lr.user_id = reader_id or lw.user_id = reader_id
+       or ug.user_id = reader_id or ga.user_id = reader_id or g.owner_id = reader_id
+    order by l.id);
+end if;
+end;
+$$ language plpgsql;
+
+create or replace function writable_lists(writer_id int) returns table (
+    id int,
+    name varchar(256),
+    public boolean,
+    owner varchar(64)
+) as $$
+begin
+if (select u.is_admin from users u where u.id = writer_id) then
+    return query (select * from songs_list_with_username);
+else
+    return query (select
+    distinct l.id, l.name, l.public, u.username as owner from songs_list l
+    left join list_writer lw on l.id = lw.list_id
+    left join group_list_writer glw on l.id = glw.list_id
+    left join users_group g on glw.group_id = g.id
+    left join user_in_group ug on g.id = ug.group_id
+    left join group_admin ga on g.id = ga.group_id
+    left join users u on l.owner_id = u.id
+    where l.owner_id = writer_id or lw.user_id = writer_id
+       or ug.user_id = writer_id or ga.user_id = writer_id or g.owner_id = writer_id
+    order by l.id)
+    union
+    (select l.id, l.name, l.public, l.owner
+    from users u left join songs_list_with_username l on l.public
+    where u.approved and u.id = writer_id)
     order by id;
 end if;
 end;

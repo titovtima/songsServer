@@ -53,7 +53,7 @@ data class Song (val id: Int, val name: String, val extra: String?, val key: Int
             }
         }
 
-        private fun songFromResultSet(resultSet: ResultSet): Song? {
+        fun songFromResultSet(resultSet: ResultSet): Song? {
             if (resultSet.next()) {
                 val id = resultSet.getInt("id")
                 val name = resultSet.getString("name")
@@ -72,7 +72,7 @@ data class Song (val id: Int, val name: String, val extra: String?, val key: Int
             }
         }
 
-        private fun allSongsFromResultSet(resultSet: ResultSet): List<Song> {
+        fun allSongsFromResultSet(resultSet: ResultSet): List<Song> {
             val result = mutableListOf<Song>()
             var song = songFromResultSet(resultSet)
             while (song != null) {
