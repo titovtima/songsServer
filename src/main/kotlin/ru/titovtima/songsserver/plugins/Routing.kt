@@ -146,7 +146,7 @@ fun Application.configureRouting() {
                 val user = username?.let { User.readFromDb(it) }
                 call.respond(ListOfSongsInfoResponse(SongInfo.readAllFromDb(user)))
             }
-            get("/api/v1/songs/main-list") {
+            get("/api/v1/songs/main_list") {
                 val principal = call.principal<JWTPrincipal>()
                 var username: String? = null
                 if (principal != null)
@@ -154,7 +154,7 @@ fun Application.configureRouting() {
                 val user = username?.let { User.readFromDb(it) }
                 call.respond(ListOfSongsResponse(Song.readMainListFromDb(user)))
             }
-            get("/api/v1/songs/info/main-list") {
+            get("/api/v1/songs/main_list/info") {
                 val principal = call.principal<JWTPrincipal>()
                 var username: String? = null
                 if (principal != null)
