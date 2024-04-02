@@ -264,6 +264,61 @@ fun Application.configureRouting() {
                     call.respond(HttpStatusCode.OK)
                 }
             }
+            post("/api/v1/songs_list/{id}") {
+                val principal = call.principal<JWTPrincipal>()
+                val username = principal!!.payload.getClaim("username").asString()
+                val user = username?.let { it1 -> User.readFromDb(it1) }
+                if (user == null) {
+                    call.respond(HttpStatusCode.Unauthorized)
+                    return@post
+                }
+                if (call.parameters["id"] == "new") {
+                    val listData = call.receive<NewSongsList>()
+                    if (listData.public && !user.approved && !user.isAdmin) {
+                        call.respond(HttpStatusCode.Forbidden, "You cannot create public lists")
+                        return@post
+                    }
+                    val list = listData.makeList(user)
+                    if (list == null) {
+                        call.respond(HttpStatusCode.InternalServerError, "Error getting new list id")
+                        return@post
+                    }
+                    if (!list.saveToDb(user, true)) {
+                        call.respond(HttpStatusCode.InternalServerError, "Error while writing to database")
+                    } else {
+                        call.respond(HttpStatusCode.Created, SongsListInfo(list.id, list.name, list.owner, list.public))
+                    }
+                    return@post
+                }
+                val listId = call.parameters["id"]?.toIntOrNull()
+                if (listId == null) {
+                    call.respond(HttpStatusCode.NotFound)
+                    return@post
+                }
+                val oldList = SongsListInfo.readFromDb(listId, user)
+                if (oldList == null) {
+                    call.respond(HttpStatusCode.NotFound)
+                    return@post
+                }
+                if (!PostSongsList.checkWriteAccess(listId, user)) {
+                    call.respond(HttpStatusCode.Forbidden)
+                    return@post
+                }
+                val list = call.receive<PostSongsList>()
+                if (list.id != listId) {
+                    call.respond(HttpStatusCode.BadRequest, "List id should match id in url")
+                    return@post
+                }
+                if (!oldList.public && list.public && !user.approved && !user.isAdmin) {
+                    call.respond(HttpStatusCode.Forbidden, "You cannot create public lists")
+                    return@post
+                }
+                if (!list.saveToDb(user, false)) {
+                    call.respond(HttpStatusCode.InternalServerError, "Error while writing to database")
+                } else {
+                    call.respond(HttpStatusCode.OK, SongsListInfo(list.id, list.name, list.owner, list.public))
+                }
+            }
         }
     }
 }
