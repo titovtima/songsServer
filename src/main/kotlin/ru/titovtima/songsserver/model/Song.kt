@@ -383,9 +383,8 @@ class SongAudio {
         }
 
         suspend fun uploadAudioToS3(byteArray: ByteArray): String {
-            var uuid = UUID.randomUUID().toString()
-            while (!checkAudioUuidFree(uuid))
-                uuid = UUID.randomUUID().toString()
+            val uuid = getFreeUuid()
+
             val putRequest = PutObjectRequest {
                 bucket = S3_BUCKET
                 key = uuid
@@ -402,10 +401,22 @@ class SongAudio {
             return uuid
         }
 
-        private fun checkAudioUuidFree(uuid: String): Boolean {
-            val query = dbConnection.prepareStatement("select * from song_audio where uuid = ?;")
+        private fun getFreeUuid(): String {
+            var free = false
+            var uuid: String = UUID.randomUUID().toString()
+            dbConnection.autoCommit = false
+            while (!free) {
+                uuid = UUID.randomUUID().toString()
+                val query = dbConnection.prepareStatement("select * from song_audio where uuid = ?;")
+                query.setString(1, uuid)
+                free = query.executeQuery().next()
+            }
+            val query = dbConnection.prepareStatement("insert into song_audio (uuid) values (?);")
             query.setString(1, uuid)
-            return !query.executeQuery().next()
+            query.executeUpdate()
+            dbConnection.commit()
+            dbConnection.autoCommit = true
+            return uuid
         }
     }
 }

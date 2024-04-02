@@ -47,6 +47,12 @@ create table song_part (
     primary key (song_id, type, ord)
 );
 
+create table song_audio (
+    song_id int references song(id) on delete set null default null,
+    uuid char(36) primary key,
+    created_at timestamptz not null default now()
+);
+
 create table song_performance (
     song_id int not null references song(id),
     artist_id int references artist(id),
@@ -150,11 +156,6 @@ create table group_song_data (
     text_notes text,
     key int,
     primary key (group_id, song_id)
-);
-
-create table song_audio (
-    song_id int references song(id) on delete set null,
-    uuid char(36) primary key
 );
 
 create table old_encoded_password (
