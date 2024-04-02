@@ -53,7 +53,8 @@ create table song_performance (
     song_name varchar(256),
     link varchar(1024),
     is_original bool default false,
-    is_main bool
+    is_main bool,
+    audio_uuid char(36) references song_audio(uuid) default null
 );
 
 create table song_reader (

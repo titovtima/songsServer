@@ -139,6 +139,24 @@ data class Song (val id: Int, val name: String, val extra: String?, val key: Int
                 queryUpdate.executeUpdate()
             }
 
+            val queryDeleteAudios = dbConnection.prepareStatement(
+                "update song_audio set song_id = null where song_id = ?;")
+            queryDeleteAudios.setInt(1, id)
+            queryDeleteAudios.executeUpdate()
+            val allAudios = audios.plus(performances.mapNotNull { it.audio })
+            if (allAudios.isNotEmpty()) {
+                val questions = Collections.nCopies(allAudios.size, "?").joinToString(",")
+                val query = dbConnection.prepareStatement(
+                    "update song_audio set song_id = ? where uuid in ($questions);")
+                query.setInt(1, id)
+                for (i in allAudios.indices) query.setString(i + 2, allAudios[i])
+                if (query.executeUpdate() != allAudios.size) {
+                    dbConnection.rollback()
+                    dbConnection.autoCommit = true
+                    return false
+                }
+            }
+
             val queryDeleteSongParts = dbConnection.prepareStatement("delete from song_part where song_id = ?;")
             queryDeleteSongParts.setInt(1, id)
             queryDeleteSongParts.executeUpdate()
@@ -149,23 +167,6 @@ data class Song (val id: Int, val name: String, val extra: String?, val key: Int
             queryDeleteSongPerformances.setInt(1, id)
             queryDeleteSongPerformances.executeUpdate()
             for (performance in performances) performance.saveToDb(id)
-
-            val queryDeleteAudios = dbConnection.prepareStatement(
-                "update song_audio set song_id = null where song_id = ?;")
-            queryDeleteAudios.setInt(1, id)
-            queryDeleteAudios.executeUpdate()
-            if (audios.isNotEmpty()) {
-                val questions = Collections.nCopies(audios.size, "?").joinToString(",")
-                val query = dbConnection.prepareStatement(
-                    "update song_audio set song_id = ? where uuid in ($questions);")
-                query.setInt(1, id)
-                for (i in audios.indices) query.setString(i + 2, audios[i])
-                if (query.executeUpdate() != audios.size) {
-                    dbConnection.rollback()
-                    dbConnection.autoCommit = true
-                    return false
-                }
-            }
         } catch (e: Exception) {
             println(e)
             dbConnection.rollback()
@@ -273,7 +274,7 @@ data class Artist(val id: Int, val name: String) {
 
 @Serializable
 data class SongPerformance(val artist: Artist?, val songName: String?, val link: String?,
-                           val isOriginal: Boolean = false, val isMain: Boolean) {
+                           val isOriginal: Boolean = false, val isMain: Boolean = false, val audio: String? = null) {
     companion object {
         fun getAllSongPerformances(songId: Int): List<SongPerformance> {
             val query = dbConnection.prepareStatement("select * from song_performance where song_id = ?;")
@@ -287,7 +288,8 @@ data class SongPerformance(val artist: Artist?, val songName: String?, val link:
                 val link = resultSet.getString("link")
                 val isOriginal = resultSet.getBoolean("is_original")
                 val isMain = resultSet.getBoolean("is_main")
-                result.add(SongPerformance(artistId?.let { Artist.readFromDb(it) }, songName, link, isOriginal, isMain))
+                val audio = resultSet.getString("audio_uuid")
+                result.add(SongPerformance(artistId?.let { Artist.readFromDb(it) }, songName, link, isOriginal, isMain, audio))
             }
             return result
         }
@@ -295,8 +297,8 @@ data class SongPerformance(val artist: Artist?, val songName: String?, val link:
 
     fun saveToDb(songId: Int) {
         val query = dbConnection.prepareStatement(
-            "insert into song_performance (song_id, artist_id, song_name, link, is_original, is_main) " +
-                    "values (?, ?, ?, ?, ?);")
+            "insert into song_performance (song_id, artist_id, song_name, link, is_original, is_main, audio_uuid) " +
+                    "values (?, ?, ?, ?, ?, ?);")
         query.setInt(1, songId)
         if (artist == null) query.setNull(2, Types.INTEGER)
         else query.setInt(2, artist.id)
@@ -306,6 +308,8 @@ data class SongPerformance(val artist: Artist?, val songName: String?, val link:
         else query.setString(4, link)
         query.setBoolean(5, isOriginal)
         query.setBoolean(6, isMain)
+        if (audio == null) query.setNull(7, Types.VARCHAR)
+        else query.setString(7, audio)
         query.executeUpdate()
     }
 }
