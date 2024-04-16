@@ -6,9 +6,8 @@ import io.ktor.server.application.*
 import io.ktor.server.auth.*
 import io.ktor.server.auth.jwt.*
 import ru.titovtima.songsserver.dbConnection
-import java.io.File
 
-val jwtSecret = File("jwt_secret").inputStream().readBytes().toString(Charsets.UTF_8)
+val jwtSecret: String = System.getenv("JWT_SECRET")
 
 fun Application.configureSecurity() {
     val jwtRealm = "songs site"
