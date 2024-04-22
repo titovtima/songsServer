@@ -55,6 +55,19 @@ data class SongsListInfo(val id: Int, val name: String, val owner: String, val p
             }
         }
 
+        fun readAllFromDb(user: User?): List<SongsListInfo> {
+            if (user == null) {
+                val query = dbConnection.prepareStatement(
+                    "select * from songs_list_with_username where public;"
+                )
+                return allSongsListsInfoFromResultSet(query.executeQuery())
+            } else {
+                val query = dbConnection.prepareStatement("select * from readable_lists(?);")
+                query.setInt(1, user.id)
+                return allSongsListsInfoFromResultSet(query.executeQuery())
+            }
+        }
+
         private fun songsListInfoFromResultSet(resultSet: ResultSet): SongsListInfo? {
             if (!resultSet.next()) return null
             val id = resultSet.getInt("id")
@@ -62,6 +75,16 @@ data class SongsListInfo(val id: Int, val name: String, val owner: String, val p
             val owner = resultSet.getString("owner")
             val public = resultSet.getBoolean("public")
             return SongsListInfo(id, name, owner, public)
+        }
+
+        private fun allSongsListsInfoFromResultSet(resultSet: ResultSet): List<SongsListInfo> {
+            val result = mutableListOf<SongsListInfo>()
+            var listInfo = songsListInfoFromResultSet(resultSet)
+            while (listInfo != null) {
+                result.add(listInfo)
+                listInfo = songsListInfoFromResultSet(resultSet)
+            }
+            return result
         }
     }
 }

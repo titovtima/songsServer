@@ -316,6 +316,14 @@ fun Application.configureSongsListsRoutes() {
                 }
                 call.respond(list)
             }
+            get("/api/v1/songs_lists/info") {
+                val principal = call.principal<JWTPrincipal>()
+                var username: String? = null
+                if (principal != null)
+                    username = principal.payload.getClaim("username").asString()
+                val user = username?.let { User.readFromDb(it) }
+                call.respond(ListOfSongsListsInfoResponse(SongsListInfo.readAllFromDb(user)))
+            }
         }
         authenticate("auth-jwt") {
             post("/api/v1/songs_list/{id}") {
@@ -388,3 +396,6 @@ data class ListOfSongsResponse(val list: List<Song>, val count: Int = list.size)
 
 @Serializable
 data class ListOfSongsInfoResponse(val list: List<SongInfo>, val count: Int = list.size)
+
+@Serializable
+data class ListOfSongsListsInfoResponse(val list: List<SongsListInfo>, val count: Int = list.size)
