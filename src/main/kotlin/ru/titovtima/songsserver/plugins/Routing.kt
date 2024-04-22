@@ -198,6 +198,24 @@ fun Application.configureRouting() {
                 }
                 call.respond(list)
             }
+            get("/api/v1/songs_list/{id}/songs_info") {
+                val principal = call.principal<JWTPrincipal>()
+                var username: String? = null
+                if (principal != null)
+                    username = principal.payload.getClaim("username").asString()
+                val user = username?.let { User.readFromDb(it) }
+                val id = call.parameters["id"]?.toIntOrNull()
+                if (id == null) {
+                    call.respond(HttpStatusCode.NotFound)
+                    return@get
+                }
+                val list = SongsListSongsInfo.readFromDb(id, user)
+                if (list == null) {
+                    call.respond(HttpStatusCode.NotFound)
+                    return@get
+                }
+                call.respond(list)
+            }
         }
         authenticate("auth-jwt") {
             post("/api/v1/change_password") {

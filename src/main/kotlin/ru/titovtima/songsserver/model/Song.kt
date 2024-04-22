@@ -470,7 +470,7 @@ data class SongInfo(val id: Int, val name: String, val public: Boolean, val inMa
             return SongInfo(id, name, public, inMainList)
         }
 
-        private fun allSongsInfoFromResultSet(resultSet: ResultSet): List<SongInfo> {
+        fun allSongsInfoFromResultSet(resultSet: ResultSet): List<SongInfo> {
             val result = mutableListOf<SongInfo>()
             var songInfo = songInfoFromResultSet(resultSet)
             while (songInfo != null) {

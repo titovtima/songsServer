@@ -67,6 +67,38 @@ data class SongsListInfo(val id: Int, val name: String, val owner: String, val p
 }
 
 @Serializable
+data class SongsListSongsInfo(val id: Int, val name: String, val owner: String, val public: Boolean,
+                              val list: List<SongInfo>) {
+    constructor(listInfo: SongsListInfo, list: List<SongInfo>) :
+            this(listInfo.id, listInfo.name, listInfo.owner, listInfo.public, list)
+
+    companion object {
+        fun readFromDb(listId: Int, user: User? = null): SongsListSongsInfo? {
+            val listInfo = SongsListInfo.readFromDb(listId, user) ?: return null
+            val list = getSongsFromDb(listId, user)
+            return SongsListSongsInfo(listInfo, list)
+        }
+
+        private fun getSongsFromDb(listId: Int, user: User?): List<SongInfo> {
+            if (user == null) {
+                val query = dbConnection.prepareStatement(
+                    "select s.id, s.name, s.extra, s.key, s.owner, s.public, s.in_main_list, s.created_at, s.updated_at " +
+                            "from public_songs() s left join song_in_list sl on sl.song_id = s.id where sl.list_id = ?;")
+                query.setInt(1, listId)
+                return SongInfo.allSongsInfoFromResultSet(query.executeQuery())
+            } else {
+                val query = dbConnection.prepareStatement(
+                    "select s.id, s.name, s.extra, s.key, s.owner, s.public, s.in_main_list, s.created_at, s.updated_at " +
+                            "from readable_songs(?) s left join song_in_list sl on sl.song_id = s.id where sl.list_id = ?;")
+                query.setInt(1, user.id)
+                query.setInt(2, listId)
+                return SongInfo.allSongsInfoFromResultSet(query.executeQuery())
+            }
+        }
+    }
+}
+
+@Serializable
 data class PostSongsList(val id: Int, val name: String, val owner: String, val public: Boolean, val list: List<Int>) {
     companion object {
         fun checkWriteAccess(listId: Int, user: User): Boolean {
