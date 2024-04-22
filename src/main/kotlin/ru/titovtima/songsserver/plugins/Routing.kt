@@ -15,6 +15,8 @@ import java.util.*
 
 fun Application.configureRouting() {
     install(IgnoreTrailingSlash)
+    this.configureSongsRoutes()
+    this.configureSongsListsRoutes()
     routing {
         post("/api/v1/register") {
             val userLogin = call.receive<UserLogin>()
@@ -75,6 +77,40 @@ fun Application.configureRouting() {
             }
             call.respond(user)
         }
+        authenticate("auth-jwt") {
+            post("/api/v1/change_password") {
+                val principal = call.principal<JWTPrincipal>()
+                val username = principal!!.payload.getClaim("username").asString()
+                val user = User.readFromDb(username)
+                if (user == null) {
+                    call.respond(HttpStatusCode.Unauthorized)
+                    return@post
+                }
+                val newPassword = call.receive<NewPassword>().password
+                if (!Authorization.passwordRegex.matches(newPassword)) {
+                    call.respond(HttpStatusCode.BadRequest,
+                        "Password should match ${Authorization.passwordRegex.pattern}")
+                    return@post
+                }
+                Authorization.changePassword(user, newPassword)
+                call.respond(HttpStatusCode.OK)
+            }
+            post("/api/v1/audio") {
+                val contentType = call.request.contentType()
+                if (!contentType.match(ContentType.Audio.MPEG)) {
+                    call.respond(HttpStatusCode.UnsupportedMediaType)
+                    return@post
+                }
+                val bytes = call.receive<ByteArray>()
+                val uuid = SongAudio.uploadAudioToS3(bytes)
+                call.respond(mapOf("uuid" to uuid))
+            }
+        }
+    }
+}
+
+fun Application.configureSongsRoutes() {
+    routing {
         authenticate("auth-jwt", strategy = AuthenticationStrategy.Optional) {
             get("/api/v1/song/{id}") {
                 val principal = call.principal<JWTPrincipal>()
@@ -162,6 +198,70 @@ fun Application.configureRouting() {
                 val user = username?.let { User.readFromDb(it) }
                 call.respond(ListOfSongsInfoResponse(SongInfo.readMainListFromDb(user)))
             }
+        }
+        authenticate("auth-jwt") {
+            post("/api/v1/song/{id}") {
+                val principal = call.principal<JWTPrincipal>()
+                val username = principal!!.payload.getClaim("username").asString()
+                val user = username?.let { it1 -> User.readFromDb(it1) }
+                if (user == null) {
+                    call.respond(HttpStatusCode.Unauthorized)
+                    return@post
+                }
+                if (call.parameters["id"] == "new") {
+                    val songData = call.receive<NewSongData>()
+                    if (songData.public && !user.approved && !user.isAdmin) {
+                        call.respond(HttpStatusCode.Forbidden, "You cannot create public songs")
+                        return@post
+                    }
+                    val song = songData.makeSong(user)
+                    if (song == null) {
+                        call.respond(HttpStatusCode.InternalServerError, "Error getting new song id")
+                        return@post
+                    }
+                    if (!song.saveToDb(user, true)) {
+                        call.respond(HttpStatusCode.InternalServerError, "Error while writing to database")
+                    } else {
+                        call.respond(HttpStatusCode.Created, song)
+                    }
+                    return@post
+                }
+                val songId = call.parameters["id"]?.toIntOrNull()
+                if (songId == null) {
+                    call.respond(HttpStatusCode.NotFound)
+                    return@post
+                }
+                val oldSong = Song.readFromDb(songId, user)
+                if (oldSong == null) {
+                    call.respond(HttpStatusCode.NotFound)
+                    return@post
+                }
+                if (!Song.checkWriteAccess(songId, user)) {
+                    call.respond(HttpStatusCode.Forbidden)
+                    return@post
+                }
+                val song = call.receive<Song>()
+                if (song.id != songId) {
+                    call.respond(HttpStatusCode.BadRequest, "Song id should match id in url")
+                    return@post
+                }
+                if (!oldSong.public && song.public && !user.approved && !user.isAdmin) {
+                    call.respond(HttpStatusCode.Forbidden, "You cannot create public songs")
+                    return@post
+                }
+                if (!song.saveToDb(user, false)) {
+                    call.respond(HttpStatusCode.InternalServerError, "Error while writing to database")
+                } else {
+                    call.respond(HttpStatusCode.OK)
+                }
+            }
+        }
+    }
+}
+
+fun Application.configureSongsListsRoutes() {
+    routing {
+        authenticate("auth-jwt", strategy = AuthenticationStrategy.Optional) {
             get("/api/v1/songs_list/{id}") {
                 val principal = call.principal<JWTPrincipal>()
                 var username: String? = null
@@ -218,88 +318,6 @@ fun Application.configureRouting() {
             }
         }
         authenticate("auth-jwt") {
-            post("/api/v1/change_password") {
-                val principal = call.principal<JWTPrincipal>()
-                val username = principal!!.payload.getClaim("username").asString()
-                val user = User.readFromDb(username)
-                if (user == null) {
-                    call.respond(HttpStatusCode.Unauthorized)
-                    return@post
-                }
-                val newPassword = call.receive<NewPassword>().password
-                if (!Authorization.passwordRegex.matches(newPassword)) {
-                    call.respond(HttpStatusCode.BadRequest,
-                        "Password should match ${Authorization.passwordRegex.pattern}")
-                    return@post
-                }
-                Authorization.changePassword(user, newPassword)
-                call.respond(HttpStatusCode.OK)
-            }
-            post("/api/v1/audio") {
-                val contentType = call.request.contentType()
-                if (!contentType.match(ContentType.Audio.MPEG)) {
-                    call.respond(HttpStatusCode.UnsupportedMediaType)
-                    return@post
-                }
-                val bytes = call.receive<ByteArray>()
-                val uuid = SongAudio.uploadAudioToS3(bytes)
-                call.respond(mapOf("uuid" to uuid))
-            }
-            post("/api/v1/song/{id}") {
-                val principal = call.principal<JWTPrincipal>()
-                val username = principal!!.payload.getClaim("username").asString()
-                val user = username?.let { it1 -> User.readFromDb(it1) }
-                if (user == null) {
-                    call.respond(HttpStatusCode.Unauthorized)
-                    return@post
-                }
-                if (call.parameters["id"] == "new") {
-                    val songData = call.receive<NewSongData>()
-                    if (songData.public && !user.approved && !user.isAdmin) {
-                        call.respond(HttpStatusCode.Forbidden, "You cannot create public songs")
-                        return@post
-                    }
-                    val song = songData.makeSong(user)
-                    if (song == null) {
-                        call.respond(HttpStatusCode.InternalServerError, "Error getting new song id")
-                        return@post
-                    }
-                    if (!song.saveToDb(user, true)) {
-                        call.respond(HttpStatusCode.InternalServerError, "Error while writing to database")
-                    } else {
-                        call.respond(HttpStatusCode.Created, song)
-                    }
-                    return@post
-                }
-                val songId = call.parameters["id"]?.toIntOrNull()
-                if (songId == null) {
-                    call.respond(HttpStatusCode.NotFound)
-                    return@post
-                }
-                val oldSong = Song.readFromDb(songId, user)
-                if (oldSong == null) {
-                    call.respond(HttpStatusCode.NotFound)
-                    return@post
-                }
-                if (!Song.checkWriteAccess(songId, user)) {
-                    call.respond(HttpStatusCode.Forbidden)
-                    return@post
-                }
-                val song = call.receive<Song>()
-                if (song.id != songId) {
-                    call.respond(HttpStatusCode.BadRequest, "Song id should match id in url")
-                    return@post
-                }
-                if (!oldSong.public && song.public && !user.approved && !user.isAdmin) {
-                    call.respond(HttpStatusCode.Forbidden, "You cannot create public songs")
-                    return@post
-                }
-                if (!song.saveToDb(user, false)) {
-                    call.respond(HttpStatusCode.InternalServerError, "Error while writing to database")
-                } else {
-                    call.respond(HttpStatusCode.OK)
-                }
-            }
             post("/api/v1/songs_list/{id}") {
                 val principal = call.principal<JWTPrincipal>()
                 val username = principal!!.payload.getClaim("username").asString()
