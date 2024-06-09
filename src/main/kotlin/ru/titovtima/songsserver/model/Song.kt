@@ -126,7 +126,7 @@ data class Song (val id: Int, val name: String, val extra: String?, val key: Int
                 queryInsert.executeUpdate()
             } else {
                 val queryUpdate = dbConnection.prepareStatement(
-                    "update song set name = ?, extra = ?, key = ?, public = ?, owner_id = ?, " +
+                    "update song set name = ?, extra = ?, key = ?, public = ?, in_main_list = ?, owner_id = ?, " +
                             "updated_at = now() where id = ?;")
                 queryUpdate.setString(1, name)
                 if (extra == null) queryUpdate.setNull(2, Types.VARCHAR)
@@ -134,8 +134,9 @@ data class Song (val id: Int, val name: String, val extra: String?, val key: Int
                 if (key == null) queryUpdate.setNull(3, Types.INTEGER)
                 else queryUpdate.setInt(3, key)
                 queryUpdate.setBoolean(4, public)
-                queryUpdate.setInt(5, userOwner.id)
-                queryUpdate.setInt(6, id)
+                queryUpdate.setBoolean(5, inMainList)
+                queryUpdate.setInt(6, userOwner.id)
+                queryUpdate.setInt(7, id)
                 queryUpdate.executeUpdate()
             }
 
