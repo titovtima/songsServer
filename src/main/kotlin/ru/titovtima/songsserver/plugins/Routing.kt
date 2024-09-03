@@ -6,15 +6,18 @@ import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.auth.*
 import io.ktor.server.auth.jwt.*
+import io.ktor.server.plugins.partialcontent.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kotlinx.serialization.Serializable
 import ru.titovtima.songsserver.model.*
+import java.io.File
 import java.util.*
 
 fun Application.configureRouting() {
     install(IgnoreTrailingSlash)
+    install(PartialContent)
     this.configureSongsRoutes()
     this.configureSongsListsRoutes()
     routing {
@@ -56,13 +59,17 @@ fun Application.configureRouting() {
                 call.respond(HttpStatusCode.NotFound)
                 return@get
             }
-            val byteArray = SongAudio.loadAudioFromS3(uuid)
-            if (byteArray == null) {
-                call.respond(HttpStatusCode.NotFound)
-                return@get
+            val file = File("/home/songsserver/cache/$uuid")
+            if (!file.exists() || (Date().time - file.lastModified() > 1000 * 60 * 60)) {
+                val byteArray = SongAudio.loadAudioFromS3(uuid)
+                if (byteArray == null) {
+                    call.respond(HttpStatusCode.NotFound)
+                    return@get
+                }
+                file.writeBytes(byteArray)
             }
             call.response.header("Content-Type", "audio/mpeg")
-            call.respond(byteArray)
+            call.respondFile(file)
         }
         get("/api/v1/user/{username}") {
             val username = call.parameters["username"]
