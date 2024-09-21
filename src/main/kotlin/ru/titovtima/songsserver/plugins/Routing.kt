@@ -1,11 +1,8 @@
 package ru.titovtima.songsserver.plugins
 
-import com.auth0.jwt.JWT
-import com.auth0.jwt.algorithms.Algorithm
 import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.auth.*
-import io.ktor.server.auth.jwt.*
 import io.ktor.server.plugins.partialcontent.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
@@ -46,12 +43,16 @@ fun Application.configureRouting() {
                 call.respond(HttpStatusCode.Unauthorized)
                 return@post
             }
-            val token = JWT.create()
-                .withClaim("username", userLogin.username)
-                .withClaim("created_at", System.currentTimeMillis())
-                .withExpiresAt(Date(System.currentTimeMillis() + 30*60*1000))
-                .sign(Algorithm.HMAC256(jwtSecret))
-            call.respond(mapOf("token" to token))
+            val user = User.readFromDb(userLogin.username)
+            if (user == null) {
+                call.respond(HttpStatusCode.Unauthorized)
+                return@post
+            }
+            val token = Token.createToken(user.id)
+            if (token == null)
+                call.respond(HttpStatusCode.BadGateway, ErrorResponse(1, "Error generating token"))
+            else
+                call.respond(mapOf("token" to token))
         }
         get("/api/v1/audio/{uuid}") {
             val uuid = call.parameters["uuid"]
@@ -84,11 +85,9 @@ fun Application.configureRouting() {
             }
             call.respond(user)
         }
-        authenticate("auth-jwt") {
+        authenticate("auth-bearer") {
             post("/api/v1/change_password") {
-                val principal = call.principal<JWTPrincipal>()
-                val username = principal!!.payload.getClaim("username").asString()
-                val user = User.readFromDb(username)
+                val user = getUser(call)
                 if (user == null) {
                     call.respond(HttpStatusCode.Unauthorized)
                     return@post
@@ -118,18 +117,14 @@ fun Application.configureRouting() {
 
 fun Application.configureSongsRoutes() {
     routing {
-        authenticate("auth-jwt", strategy = AuthenticationStrategy.Optional) {
+        authenticate("auth-bearer", strategy = AuthenticationStrategy.Optional) {
             get("/api/v1/song/{id}") {
-                val principal = call.principal<JWTPrincipal>()
-                var username: String? = null
-                if (principal != null)
-                    username = principal.payload.getClaim("username").asString()
                 val songId = call.parameters["id"]?.toIntOrNull()
                 if (songId == null) {
                     call.respond(HttpStatusCode.NotFound)
                     return@get
                 }
-                val user = username?.let { User.readFromDb(it) }
+                val user = getUser(call)
                 val song = Song.readFromDb(songId, user)
                 if (song == null) {
                     call.respond(HttpStatusCode.NotFound)
@@ -138,16 +133,12 @@ fun Application.configureSongsRoutes() {
                 }
             }
             get("/api/v1/song/{id}/info") {
-                val principal = call.principal<JWTPrincipal>()
-                var username: String? = null
-                if (principal != null)
-                    username = principal.payload.getClaim("username").asString()
                 val songId = call.parameters["id"]?.toIntOrNull()
                 if (songId == null) {
                     call.respond(HttpStatusCode.NotFound)
                     return@get
                 }
-                val user = username?.let { User.readFromDb(it) }
+                val user = getUser(call)
                 val songInfo = SongInfo.readFromDb(songId, user)
                 if (songInfo == null) {
                     call.respond(HttpStatusCode.NotFound)
@@ -156,16 +147,12 @@ fun Application.configureSongsRoutes() {
                 }
             }
             get("/api/v1/song/{id}/rights") {
-                val principal = call.principal<JWTPrincipal>()
-                var username: String? = null
-                if (principal != null)
-                    username = principal.payload.getClaim("username").asString()
                 val songId = call.parameters["id"]?.toIntOrNull()
                 if (songId == null) {
                     call.respond(HttpStatusCode.NotFound)
                     return@get
                 }
-                val user = username?.let { User.readFromDb(it) }
+                val user = getUser(call)
                 val songRights = SongRights.readFromDb(songId, user)
                 if (songRights == null) {
                     call.respond(HttpStatusCode.NotFound)
@@ -174,43 +161,25 @@ fun Application.configureSongsRoutes() {
                 }
             }
             get("/api/v1/songs") {
-                val principal = call.principal<JWTPrincipal>()
-                var username: String? = null
-                if (principal != null)
-                    username = principal.payload.getClaim("username").asString()
-                val user = username?.let { User.readFromDb(it) }
+                val user = getUser(call)
                 call.respond(ListOfSongsResponse(Song.readAllFromDb(user)))
             }
             get("/api/v1/songs/info") {
-                val principal = call.principal<JWTPrincipal>()
-                var username: String? = null
-                if (principal != null)
-                    username = principal.payload.getClaim("username").asString()
-                val user = username?.let { User.readFromDb(it) }
+                val user = getUser(call)
                 call.respond(ListOfSongsInfoResponse(SongInfo.readAllFromDb(user)))
             }
             get("/api/v1/songs/main_list") {
-                val principal = call.principal<JWTPrincipal>()
-                var username: String? = null
-                if (principal != null)
-                    username = principal.payload.getClaim("username").asString()
-                val user = username?.let { User.readFromDb(it) }
+                val user = getUser(call)
                 call.respond(ListOfSongsResponse(Song.readMainListFromDb(user)))
             }
             get("/api/v1/songs/main_list/info") {
-                val principal = call.principal<JWTPrincipal>()
-                var username: String? = null
-                if (principal != null)
-                    username = principal.payload.getClaim("username").asString()
-                val user = username?.let { User.readFromDb(it) }
+                val user = getUser(call)
                 call.respond(ListOfSongsInfoResponse(SongInfo.readMainListFromDb(user)))
             }
         }
-        authenticate("auth-jwt") {
+        authenticate("auth-bearer") {
             post("/api/v1/song/{id}") {
-                val principal = call.principal<JWTPrincipal>()
-                val username = principal!!.payload.getClaim("username").asString()
-                val user = username?.let { it1 -> User.readFromDb(it1) }
+                val user = getUser(call)
                 if (user == null) {
                     call.respond(HttpStatusCode.Unauthorized)
                     return@post
@@ -268,13 +237,9 @@ fun Application.configureSongsRoutes() {
 
 fun Application.configureSongsListsRoutes() {
     routing {
-        authenticate("auth-jwt", strategy = AuthenticationStrategy.Optional) {
+        authenticate("auth-bearer", strategy = AuthenticationStrategy.Optional) {
             get("/api/v1/songs_list/{id}") {
-                val principal = call.principal<JWTPrincipal>()
-                var username: String? = null
-                if (principal != null)
-                    username = principal.payload.getClaim("username").asString()
-                val user = username?.let { User.readFromDb(it) }
+                val user = getUser(call)
                 val id = call.parameters["id"]?.toIntOrNull()
                 if (id == null) {
                     call.respond(HttpStatusCode.NotFound)
@@ -288,11 +253,7 @@ fun Application.configureSongsListsRoutes() {
                 call.respond(list)
             }
             get("/api/v1/songs_list/{id}/info") {
-                val principal = call.principal<JWTPrincipal>()
-                var username: String? = null
-                if (principal != null)
-                    username = principal.payload.getClaim("username").asString()
-                val user = username?.let { User.readFromDb(it) }
+                val user = getUser(call)
                 val id = call.parameters["id"]?.toIntOrNull()
                 if (id == null) {
                     call.respond(HttpStatusCode.NotFound)
@@ -306,11 +267,7 @@ fun Application.configureSongsListsRoutes() {
                 call.respond(list)
             }
             get("/api/v1/songs_list/{id}/songs_info") {
-                val principal = call.principal<JWTPrincipal>()
-                var username: String? = null
-                if (principal != null)
-                    username = principal.payload.getClaim("username").asString()
-                val user = username?.let { User.readFromDb(it) }
+                val user = getUser(call)
                 val id = call.parameters["id"]?.toIntOrNull()
                 if (id == null) {
                     call.respond(HttpStatusCode.NotFound)
@@ -324,19 +281,15 @@ fun Application.configureSongsListsRoutes() {
                 call.respond(list)
             }
             get("/api/v1/songs_lists/info") {
-                val principal = call.principal<JWTPrincipal>()
-                var username: String? = null
-                if (principal != null)
-                    username = principal.payload.getClaim("username").asString()
-                val user = username?.let { User.readFromDb(it) }
+                val principal = call.principal<UserIdIntPrincipal>()
+                val userId = principal?.id
+                val user = userId?.let { User.readFromDb(it) }
                 call.respond(ListOfSongsListsInfoResponse(SongsListInfo.readAllFromDb(user)))
             }
         }
-        authenticate("auth-jwt") {
+        authenticate("auth-bearer") {
             post("/api/v1/songs_list/{id}") {
-                val principal = call.principal<JWTPrincipal>()
-                val username = principal!!.payload.getClaim("username").asString()
-                val user = username?.let { it1 -> User.readFromDb(it1) }
+                val user = getUser(call)
                 if (user == null) {
                     call.respond(HttpStatusCode.Unauthorized)
                     return@post
@@ -390,6 +343,12 @@ fun Application.configureSongsListsRoutes() {
             }
         }
     }
+}
+
+fun getUser(call: ApplicationCall): User? {
+    val principal = call.principal<UserIdIntPrincipal>()
+    val userId = principal?.id
+    return userId?.let { User.readFromDb(it) }
 }
 
 @Serializable

@@ -17,7 +17,9 @@ create table users (
 
 create table auth_tokens (
     user_id int not null references users(id),
-    token varchar(128) not null unique
+    token varchar(128) not null unique,
+    created_at timestamptz not null default now(),
+    used_at timestamptz not null default now()
 );
 
 create table artist (
