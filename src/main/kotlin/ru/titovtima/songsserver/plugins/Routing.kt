@@ -101,6 +101,14 @@ fun Application.configureRouting() {
                 Authorization.changePassword(user, newPassword)
                 call.respond(HttpStatusCode.OK)
             }
+            get("/api/v1/users/me") {
+                val user = getUser(call)
+                if (user == null) {
+                    call.respond(HttpStatusCode.Unauthorized)
+                    return@get
+                }
+                call.respond(user)
+            }
             post("/api/v1/audio") {
                 val contentType = call.request.contentType()
                 if (!contentType.match(ContentType.Audio.MPEG)) {
