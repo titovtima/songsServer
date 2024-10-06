@@ -220,7 +220,7 @@ fun Application.configureSongsRoutes() {
                     call.respond(HttpStatusCode.NotFound)
                     return@post
                 }
-                if (!Song.checkWriteAccess(songId, user)) {
+                if (!SongRights.checkWriteAccess(songId, user)) {
                     call.respond(HttpStatusCode.Forbidden)
                     return@post
                 }
@@ -238,6 +238,32 @@ fun Application.configureSongsRoutes() {
                 } else {
                     call.respond(HttpStatusCode.OK)
                 }
+            }
+            post("/api/v1/song/{id}/rights") {
+                val user = getUser(call)
+                if (user == null) {
+                    call.respond(HttpStatusCode.Unauthorized)
+                    return@post
+                }
+                val songId = call.parameters["id"]?.toIntOrNull()
+                if (songId == null) {
+                    call.respond(HttpStatusCode.NotFound)
+                    return@post
+                }
+                val rights = call.receive<SongRights>()
+                if (rights.songId != songId) {
+                    call.respond(HttpStatusCode.BadRequest, "Song id should match id in url")
+                    return@post
+                }
+                if (!rights.checkWriteAccess(user)) {
+                    call.respond(HttpStatusCode.Forbidden)
+                    return@post
+                }
+                if (!rights.writeToDb(user)) {
+                    call.respond(HttpStatusCode.BadGateway, "Error writing to db")
+                    return@post
+                }
+                call.respond(HttpStatusCode.OK)
             }
         }
     }

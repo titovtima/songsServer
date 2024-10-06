@@ -93,17 +93,9 @@ data class Song (val id: Int, val name: String, val extra: String?, val key: Int
             }
             return result
         }
-
-        fun checkWriteAccess(songId: Int, user: User): Boolean {
-            val queryCheckRights = dbConnection.prepareStatement("select id from writable_songs(?) where id = ?;")
-            queryCheckRights.setInt(1, user.id)
-            queryCheckRights.setInt(2, songId)
-            val resultSet = queryCheckRights.executeQuery()
-            return resultSet.next()
-        }
     }
 
-    private fun checkWriteAccess(user: User): Boolean = checkWriteAccess(id, user)
+    private fun checkWriteAccess(user: User): Boolean = SongRights.checkWriteAccess(id, user)
 
     fun saveToDb(user: User, new: Boolean): Boolean {
         if (!new && !checkWriteAccess(user)) return false
@@ -351,6 +343,82 @@ data class SongRights(val songId: Int, val readers: List<String>, val writers: L
             else
                 null
         }
+
+        fun checkWriteAccess(songId: Int, user: User): Boolean {
+            val queryCheckRights = dbConnection.prepareStatement("select id from writable_songs(?) where id = ?;")
+            queryCheckRights.setInt(1, user.id)
+            queryCheckRights.setInt(2, songId)
+            val resultSet = queryCheckRights.executeQuery()
+            return resultSet.next()
+        }
+    }
+
+    fun checkWriteAccess(user: User): Boolean {
+        if (!checkWriteAccess(songId, user)) return false
+        val newOwnerId = User.readFromDb(owner)?.id ?: return false
+        val queryCheckOldOwner = dbConnection.prepareStatement("select owner_id from song where id = ?;")
+        queryCheckOldOwner.setInt(1, songId)
+        val resultSet = queryCheckOldOwner.executeQuery()
+        if (!resultSet.next()) return false
+        val oldOwnerId = resultSet.getInt("owner_id")
+        return newOwnerId == oldOwnerId || user.id == oldOwnerId || user.isAdmin
+    }
+
+    fun writeToDb(user: User): Boolean {
+        if (!checkWriteAccess(user)) return false
+        val newOwnerId = User.readFromDb(owner)?.id ?: return false
+        val readersIds = readers.map { User.readFromDb(it)?.id ?: return false }
+        val writersIds = writers.map { User.readFromDb(it)?.id ?: return false }
+
+        dbConnection.autoCommit = false
+
+        val queryDeleteReaders = dbConnection.prepareStatement("delete from song_reader where song_id = ?;")
+        queryDeleteReaders.setInt(1, songId)
+        queryDeleteReaders.executeUpdate()
+        if (readersIds.isNotEmpty()) {
+            val questions = Collections.nCopies(readersIds.size, "(?, ?)").joinToString(",")
+            println("insert into song_reader(user_id, song_id) values $questions;")
+            val queryAddReaders =
+                dbConnection.prepareStatement("insert into song_reader(user_id, song_id) values $questions;")
+            for (i in readersIds.indices) {
+                println(readersIds[i])
+                queryAddReaders.setInt(i * 2 + 1, readersIds[i])
+                queryAddReaders.setInt(i * 2 + 2, songId)
+            }
+            if (queryAddReaders.executeUpdate() != readersIds.size) {
+                dbConnection.rollback()
+                dbConnection.autoCommit = true
+                return false
+            }
+        }
+
+        val queryDeleteWriters = dbConnection.prepareStatement("delete from song_writer where song_id = ?;")
+        queryDeleteWriters.setInt(1, songId)
+        queryDeleteWriters.executeUpdate()
+        if (writersIds.isNotEmpty()) {
+            val questions = Collections.nCopies(writersIds.size, "(?, ?)").joinToString(",")
+            val queryAddWriters =
+                dbConnection.prepareStatement("insert into song_writer(user_id, song_id) values $questions;")
+            for (i in writersIds.indices) {
+                queryAddWriters.setInt(i * 2 + 1, writersIds[i])
+                queryAddWriters.setInt(i * 2 + 2, songId)
+            }
+            if (queryAddWriters.executeUpdate() != writersIds.size) {
+                dbConnection.rollback()
+                dbConnection.autoCommit = true
+                return false
+            }
+        }
+
+        val queryUpdateOwner = dbConnection.prepareStatement("update song set owner_id = ? where id = ?;")
+        queryUpdateOwner.setInt(1, newOwnerId)
+        queryUpdateOwner.setInt(2, songId)
+        queryUpdateOwner.executeUpdate()
+
+        dbConnection.commit()
+        dbConnection.autoCommit = true
+
+        return true
     }
 }
 
