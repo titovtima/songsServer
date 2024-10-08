@@ -316,6 +316,7 @@ data class SongRights(val songId: Int, val readers: List<String>, val writers: L
     companion object {
         fun readFromDb(songId: Int, user: User?): SongRights? {
             if (user == null) return null
+            if (!checkWriteAccess(songId, user)) return null
             val readers = arrayListOf<String>()
             val queryReaders = dbConnection.prepareStatement(
                 "select username from users u right join song_reader r on u.id = r.user_id where r.song_id = ?;")
@@ -342,10 +343,7 @@ data class SongRights(val songId: Int, val readers: List<String>, val writers: L
                 return null
             }
             val owner = resultSong.getString("username")
-            return if (owner == user.username || readers.contains(user.username) || user.isAdmin)
-                SongRights(songId, readers, writers, owner)
-            else
-                null
+            return SongRights(songId, readers, writers, owner)
         }
 
         fun checkWriteAccess(songId: Int, user: User): Boolean {
