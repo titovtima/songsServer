@@ -37,6 +37,7 @@ dependencies {
     implementation("io.ktor:ktor-serialization-kotlinx-json-jvm")
     implementation("io.ktor:ktor-server-netty-jvm")
     implementation("io.ktor:ktor-server-partial-content:$ktor_version")
+    implementation("io.ktor:ktor-server-cors:$ktor_version")
     implementation("ch.qos.logback:logback-classic:$logback_version")
     implementation("org.postgresql:postgresql:$postgresql_driver_version")
     implementation("aws.sdk.kotlin:s3:1.0.23")

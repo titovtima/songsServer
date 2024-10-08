@@ -3,6 +3,7 @@ package ru.titovtima.songsserver.plugins
 import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.auth.*
+import io.ktor.server.plugins.cors.routing.*
 import io.ktor.server.plugins.partialcontent.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
@@ -15,6 +16,14 @@ import java.util.*
 fun Application.configureRouting() {
     install(IgnoreTrailingSlash)
     install(PartialContent)
+    install(CORS) {
+        allowHost("localhost:3000")
+        allowHeader(HttpHeaders.ContentType)
+        allowHeader(HttpHeaders.Authorization)
+        allowMethod(HttpMethod.Get)
+        allowMethod(HttpMethod.Post)
+        allowMethod(HttpMethod.Head)
+    }
     this.configureSongsRoutes()
     this.configureSongsListsRoutes()
     routing {
