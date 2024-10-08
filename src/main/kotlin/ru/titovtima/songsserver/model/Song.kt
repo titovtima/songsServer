@@ -6,8 +6,10 @@ import aws.sdk.kotlin.services.s3.model.PutObjectRequest
 import aws.smithy.kotlin.runtime.content.ByteStream
 import aws.smithy.kotlin.runtime.content.toByteArray
 import aws.smithy.kotlin.runtime.net.url.Url
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import ru.titovtima.songsserver.dbConnection
+import ru.titovtima.songsserver.dbLock
 import java.sql.ResultSet
 import java.sql.Types
 import java.util.Collections
@@ -97,77 +99,79 @@ data class Song (val id: Int, val name: String, val extra: String?, val key: Int
 
     private fun checkWriteAccess(user: User): Boolean = SongRights.checkWriteAccess(id, user)
 
-    fun saveToDb(user: User, new: Boolean): Boolean {
+    suspend fun saveToDb(user: User, new: Boolean): Boolean {
         if (!new && !checkWriteAccess(user)) return false
         val userOwner = User.readFromDb(owner) ?: return false
-        dbConnection.autoCommit = false
-        try {
-            if (new) {
-                val queryInsert = dbConnection.prepareStatement(
-                    "insert into song (id, name, extra, key, owner_id, public, in_main_list, created_at, updated_at) " +
-                        "values (?, ?, ?, ?, ?, ?, ?, now(), now());")
-                queryInsert.setInt(1, id)
-                queryInsert.setString(2, name)
-                if (extra == null) queryInsert.setNull(3, Types.VARCHAR)
-                else queryInsert.setString(3, extra)
-                if (key == null) queryInsert.setNull(4, Types.INTEGER)
-                else queryInsert.setInt(4, key)
-                queryInsert.setInt(5, userOwner.id)
-                queryInsert.setBoolean(6, public)
-                queryInsert.setBoolean(7, inMainList)
-                queryInsert.executeUpdate()
-            } else {
-                val queryUpdate = dbConnection.prepareStatement(
-                    "update song set name = ?, extra = ?, key = ?, public = ?, in_main_list = ?, owner_id = ?, " +
-                            "updated_at = now() where id = ?;")
-                queryUpdate.setString(1, name)
-                if (extra == null) queryUpdate.setNull(2, Types.VARCHAR)
-                else queryUpdate.setString(2, extra)
-                if (key == null) queryUpdate.setNull(3, Types.INTEGER)
-                else queryUpdate.setInt(3, key)
-                queryUpdate.setBoolean(4, public)
-                queryUpdate.setBoolean(5, inMainList)
-                queryUpdate.setInt(6, userOwner.id)
-                queryUpdate.setInt(7, id)
-                queryUpdate.executeUpdate()
-            }
-
-            val queryDeleteAudios = dbConnection.prepareStatement(
-                "update song_audio set song_id = null where song_id = ?;")
-            queryDeleteAudios.setInt(1, id)
-            queryDeleteAudios.executeUpdate()
-            val allAudios = audios.plus(performances.mapNotNull { it.audio })
-            if (allAudios.isNotEmpty()) {
-                val questions = Collections.nCopies(allAudios.size, "?").joinToString(",")
-                val query = dbConnection.prepareStatement(
-                    "update song_audio set song_id = ? where uuid in ($questions);")
-                query.setInt(1, id)
-                for (i in allAudios.indices) query.setString(i + 2, allAudios[i])
-                if (query.executeUpdate() != allAudios.size) {
-                    dbConnection.rollback()
-                    dbConnection.autoCommit = true
-                    return false
+        dbLock.withLock {
+            dbConnection.autoCommit = false
+            try {
+                if (new) {
+                    val queryInsert = dbConnection.prepareStatement(
+                        "insert into song (id, name, extra, key, owner_id, public, in_main_list, created_at, updated_at) " +
+                                "values (?, ?, ?, ?, ?, ?, ?, now(), now());")
+                    queryInsert.setInt(1, id)
+                    queryInsert.setString(2, name)
+                    if (extra == null) queryInsert.setNull(3, Types.VARCHAR)
+                    else queryInsert.setString(3, extra)
+                    if (key == null) queryInsert.setNull(4, Types.INTEGER)
+                    else queryInsert.setInt(4, key)
+                    queryInsert.setInt(5, userOwner.id)
+                    queryInsert.setBoolean(6, public)
+                    queryInsert.setBoolean(7, inMainList)
+                    queryInsert.executeUpdate()
+                } else {
+                    val queryUpdate = dbConnection.prepareStatement(
+                        "update song set name = ?, extra = ?, key = ?, public = ?, in_main_list = ?, owner_id = ?, " +
+                                "updated_at = now() where id = ?;")
+                    queryUpdate.setString(1, name)
+                    if (extra == null) queryUpdate.setNull(2, Types.VARCHAR)
+                    else queryUpdate.setString(2, extra)
+                    if (key == null) queryUpdate.setNull(3, Types.INTEGER)
+                    else queryUpdate.setInt(3, key)
+                    queryUpdate.setBoolean(4, public)
+                    queryUpdate.setBoolean(5, inMainList)
+                    queryUpdate.setInt(6, userOwner.id)
+                    queryUpdate.setInt(7, id)
+                    queryUpdate.executeUpdate()
                 }
+
+                val queryDeleteAudios = dbConnection.prepareStatement(
+                    "update song_audio set song_id = null where song_id = ?;")
+                queryDeleteAudios.setInt(1, id)
+                queryDeleteAudios.executeUpdate()
+                val allAudios = audios.plus(performances.mapNotNull { it.audio })
+                if (allAudios.isNotEmpty()) {
+                    val questions = Collections.nCopies(allAudios.size, "?").joinToString(",")
+                    val query = dbConnection.prepareStatement(
+                        "update song_audio set song_id = ? where uuid in ($questions);")
+                    query.setInt(1, id)
+                    for (i in allAudios.indices) query.setString(i + 2, allAudios[i])
+                    if (query.executeUpdate() != allAudios.size) {
+                        dbConnection.rollback()
+                        dbConnection.autoCommit = true
+                        return false
+                    }
+                }
+
+                val queryDeleteSongParts = dbConnection.prepareStatement("delete from song_part where song_id = ?;")
+                queryDeleteSongParts.setInt(1, id)
+                queryDeleteSongParts.executeUpdate()
+                for (part in parts) part.saveToDb(id)
+
+                val queryDeleteSongPerformances =
+                    dbConnection.prepareStatement("delete from song_performance where song_id = ?;")
+                queryDeleteSongPerformances.setInt(1, id)
+                queryDeleteSongPerformances.executeUpdate()
+                for (performance in performances) performance.saveToDb(id)
+            } catch (e: Exception) {
+                println(e)
+                dbConnection.rollback()
+                dbConnection.autoCommit = true
+                return false
             }
-
-            val queryDeleteSongParts = dbConnection.prepareStatement("delete from song_part where song_id = ?;")
-            queryDeleteSongParts.setInt(1, id)
-            queryDeleteSongParts.executeUpdate()
-            for (part in parts) part.saveToDb(id)
-
-            val queryDeleteSongPerformances =
-                dbConnection.prepareStatement("delete from song_performance where song_id = ?;")
-            queryDeleteSongPerformances.setInt(1, id)
-            queryDeleteSongPerformances.executeUpdate()
-            for (performance in performances) performance.saveToDb(id)
-        } catch (e: Exception) {
-            println(e)
-            dbConnection.rollback()
+            dbConnection.commit()
             dbConnection.autoCommit = true
-            return false
         }
-        dbConnection.commit()
-        dbConnection.autoCommit = true
         return true
     }
 }
@@ -364,59 +368,61 @@ data class SongRights(val songId: Int, val readers: List<String>, val writers: L
         return newOwnerId == oldOwnerId || user.id == oldOwnerId || user.isAdmin
     }
 
-    fun writeToDb(user: User): Boolean {
+    suspend fun writeToDb(user: User): Boolean {
         if (!checkWriteAccess(user)) return false
         val newOwnerId = User.readFromDb(owner)?.id ?: return false
         val readersIds = readers.map { User.readFromDb(it)?.id ?: return false }
         val writersIds = writers.map { User.readFromDb(it)?.id ?: return false }
 
-        dbConnection.autoCommit = false
+        dbLock.withLock {
+            dbConnection.autoCommit = false
 
-        val queryDeleteReaders = dbConnection.prepareStatement("delete from song_reader where song_id = ?;")
-        queryDeleteReaders.setInt(1, songId)
-        queryDeleteReaders.executeUpdate()
-        if (readersIds.isNotEmpty()) {
-            val questions = Collections.nCopies(readersIds.size, "(?, ?)").joinToString(",")
-            println("insert into song_reader(user_id, song_id) values $questions;")
-            val queryAddReaders =
-                dbConnection.prepareStatement("insert into song_reader(user_id, song_id) values $questions;")
-            for (i in readersIds.indices) {
-                println(readersIds[i])
-                queryAddReaders.setInt(i * 2 + 1, readersIds[i])
-                queryAddReaders.setInt(i * 2 + 2, songId)
+            val queryDeleteReaders = dbConnection.prepareStatement("delete from song_reader where song_id = ?;")
+            queryDeleteReaders.setInt(1, songId)
+            queryDeleteReaders.executeUpdate()
+            if (readersIds.isNotEmpty()) {
+                val questions = Collections.nCopies(readersIds.size, "(?, ?)").joinToString(",")
+                println("insert into song_reader(user_id, song_id) values $questions;")
+                val queryAddReaders =
+                    dbConnection.prepareStatement("insert into song_reader(user_id, song_id) values $questions;")
+                for (i in readersIds.indices) {
+                    println(readersIds[i])
+                    queryAddReaders.setInt(i * 2 + 1, readersIds[i])
+                    queryAddReaders.setInt(i * 2 + 2, songId)
+                }
+                if (queryAddReaders.executeUpdate() != readersIds.size) {
+                    dbConnection.rollback()
+                    dbConnection.autoCommit = true
+                    return false
+                }
             }
-            if (queryAddReaders.executeUpdate() != readersIds.size) {
-                dbConnection.rollback()
-                dbConnection.autoCommit = true
-                return false
+
+            val queryDeleteWriters = dbConnection.prepareStatement("delete from song_writer where song_id = ?;")
+            queryDeleteWriters.setInt(1, songId)
+            queryDeleteWriters.executeUpdate()
+            if (writersIds.isNotEmpty()) {
+                val questions = Collections.nCopies(writersIds.size, "(?, ?)").joinToString(",")
+                val queryAddWriters =
+                    dbConnection.prepareStatement("insert into song_writer(user_id, song_id) values $questions;")
+                for (i in writersIds.indices) {
+                    queryAddWriters.setInt(i * 2 + 1, writersIds[i])
+                    queryAddWriters.setInt(i * 2 + 2, songId)
+                }
+                if (queryAddWriters.executeUpdate() != writersIds.size) {
+                    dbConnection.rollback()
+                    dbConnection.autoCommit = true
+                    return false
+                }
             }
+
+            val queryUpdateOwner = dbConnection.prepareStatement("update song set owner_id = ? where id = ?;")
+            queryUpdateOwner.setInt(1, newOwnerId)
+            queryUpdateOwner.setInt(2, songId)
+            queryUpdateOwner.executeUpdate()
+
+            dbConnection.commit()
+            dbConnection.autoCommit = true
         }
-
-        val queryDeleteWriters = dbConnection.prepareStatement("delete from song_writer where song_id = ?;")
-        queryDeleteWriters.setInt(1, songId)
-        queryDeleteWriters.executeUpdate()
-        if (writersIds.isNotEmpty()) {
-            val questions = Collections.nCopies(writersIds.size, "(?, ?)").joinToString(",")
-            val queryAddWriters =
-                dbConnection.prepareStatement("insert into song_writer(user_id, song_id) values $questions;")
-            for (i in writersIds.indices) {
-                queryAddWriters.setInt(i * 2 + 1, writersIds[i])
-                queryAddWriters.setInt(i * 2 + 2, songId)
-            }
-            if (queryAddWriters.executeUpdate() != writersIds.size) {
-                dbConnection.rollback()
-                dbConnection.autoCommit = true
-                return false
-            }
-        }
-
-        val queryUpdateOwner = dbConnection.prepareStatement("update song set owner_id = ? where id = ?;")
-        queryUpdateOwner.setInt(1, newOwnerId)
-        queryUpdateOwner.setInt(2, songId)
-        queryUpdateOwner.executeUpdate()
-
-        dbConnection.commit()
-        dbConnection.autoCommit = true
 
         return true
     }

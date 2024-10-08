@@ -3,6 +3,7 @@ package ru.titovtima.songsserver
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
 import io.ktor.server.netty.*
+import kotlinx.coroutines.sync.Mutex
 import ru.titovtima.songsserver.plugins.configureRouting
 import ru.titovtima.songsserver.plugins.configureSecurity
 import ru.titovtima.songsserver.plugins.configureSerialization
@@ -22,3 +23,4 @@ fun Application.module() {
 
 val dbConnection: Connection = DriverManager.getConnection(
     "jdbc:postgresql://localhost:5432/songsserver", "songsserver", System.getenv("POSTGRES_PASSWORD"))
+val dbLock = Mutex()
