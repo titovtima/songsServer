@@ -380,11 +380,9 @@ data class SongRights(val songId: Int, val readers: List<String>, val writers: L
             queryDeleteReaders.executeUpdate()
             if (readersIds.isNotEmpty()) {
                 val questions = Collections.nCopies(readersIds.size, "(?, ?)").joinToString(",")
-                println("insert into song_reader(user_id, song_id) values $questions;")
                 val queryAddReaders =
                     dbConnection.prepareStatement("insert into song_reader(user_id, song_id) values $questions;")
                 for (i in readersIds.indices) {
-                    println(readersIds[i])
                     queryAddReaders.setInt(i * 2 + 1, readersIds[i])
                     queryAddReaders.setInt(i * 2 + 2, songId)
                 }
