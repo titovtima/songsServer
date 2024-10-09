@@ -17,7 +17,7 @@ fun Application.configureRouting() {
     install(IgnoreTrailingSlash)
     install(PartialContent)
     install(CORS) {
-        allowHost("localhost:3000")
+        anyHost()
         allowHeader(HttpHeaders.ContentType)
         allowHeader(HttpHeaders.Authorization)
         allowMethod(HttpMethod.Get)
