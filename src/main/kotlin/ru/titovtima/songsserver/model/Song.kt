@@ -266,6 +266,54 @@ data class Artist(val id: Int, val name: String) {
             } else
                 return null
         }
+
+        fun readAllFromDb(): List<Artist> {
+            val query = dbConnection.prepareStatement("select id, name from artist;")
+            val result = mutableListOf<Artist>()
+            val resultSet = query.executeQuery()
+            while (resultSet.next()) {
+                val id = resultSet.getInt("id")
+                val name = resultSet.getString("name")
+                result.add(Artist(id, name))
+            }
+            return result
+        }
+
+        suspend fun saveNew(name: String): Int? {
+            if (dbConnection.autoCommit) {
+                dbLock.withLock {
+                    dbConnection.autoCommit = false
+                    val result = saveNewInner(name)
+                    dbConnection.commit()
+                    dbConnection.autoCommit = true
+                    return result
+                }
+            } else {
+                return saveNewInner(name)
+            }
+        }
+
+        private fun saveNewInner(name: String): Int? {
+            val queryGetId = dbConnection.prepareStatement("select min_key from keys where name='artist';")
+            val resultSet = queryGetId.executeQuery()
+            if (!resultSet.next()) return null
+            val id = resultSet.getInt("min_key")
+            val queryUpdateMinKey = dbConnection.prepareStatement("update keys set min_key = ? where name='artist';")
+            queryUpdateMinKey.setInt(1, id + 1)
+            if (queryUpdateMinKey.executeUpdate() != 1) return null
+            val queryCreate = dbConnection.prepareStatement("insert into artist(id, name) values (?, ?);")
+            queryCreate.setInt(1, id)
+            queryCreate.setString(2, name)
+            if (queryCreate.executeUpdate() != 1) return null
+            return id
+        }
+    }
+
+    fun saveToDb() {
+        val query = dbConnection.prepareStatement("update artist set name = ? where id = ?;")
+        query.setString(1, name)
+        query.setInt(2, id)
+        query.executeUpdate()
     }
 }
 
@@ -292,12 +340,17 @@ data class SongPerformance(val artist: Artist?, val songName: String?, val link:
         }
     }
 
-    fun saveToDb(songId: Int) {
+    suspend fun saveToDb(songId: Int) {
+        var saveArtistId: Int? = null
+        if (artist != null && artist.id < 0) {
+            saveArtistId = Artist.saveNew(artist.name)
+        }
         val query = dbConnection.prepareStatement(
             "insert into song_performance (song_id, artist_id, song_name, link, is_original, is_main, audio_uuid) " +
                     "values (?, ?, ?, ?, ?, ?);")
         query.setInt(1, songId)
-        if (artist == null) query.setNull(2, Types.INTEGER)
+        if (saveArtistId != null) query.setInt(2, saveArtistId)
+        else if (artist == null) query.setNull(2, Types.INTEGER)
         else query.setInt(2, artist.id)
         if (songName == null) query.setNull(3, Types.VARCHAR)
         else query.setString(3, songName)

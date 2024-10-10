@@ -94,6 +94,23 @@ fun Application.configureRouting() {
             }
             call.respond(user)
         }
+        get("/api/v1/artists") {
+            val list = Artist.readAllFromDb()
+            call.respond(list)
+        }
+        get("/api/v1/artist/{id}") {
+            val id = call.parameters["id"]?.toIntOrNull()
+            if (id == null) {
+                call.respond(HttpStatusCode.BadRequest, "Artist id must be integer")
+                return@get
+            }
+            val artist = Artist.readFromDb(id)
+            if (artist == null) {
+                call.respond(HttpStatusCode.NotFound)
+                return@get
+            }
+            call.respond(artist)
+        }
         authenticate("auth-bearer") {
             post("/api/v1/change_password") {
                 val user = getUser(call)
@@ -127,6 +144,30 @@ fun Application.configureRouting() {
                 val bytes = call.receive<ByteArray>()
                 val uuid = SongAudio.uploadAudioToS3(bytes)
                 call.respond(mapOf("uuid" to uuid))
+            }
+            post("/api/v1/artist/{id}") {
+                val id = call.parameters["id"]
+                if (id == null) {
+                    call.respond(HttpStatusCode.NotFound)
+                    return@post
+                }
+                val artist = call.receive<Artist>()
+                val idInt = id.toIntOrNull()
+                if (id == "new" || (idInt != null && idInt < 0)) {
+                    val newId = Artist.saveNew(artist.name)
+                    if (newId == null) {
+                        call.respond(HttpStatusCode.InternalServerError, "Error creating new artist")
+                        return@post
+                    }
+                    call.respond(HttpStatusCode.Created, Artist(newId, artist.name))
+                    return@post
+                }
+                if (idInt == null || artist.id != idInt) {
+                    call.respond(HttpStatusCode.BadRequest, "Error parsing id")
+                    return@post
+                }
+                artist.saveToDb()
+                call.respond(HttpStatusCode.OK)
             }
         }
     }
