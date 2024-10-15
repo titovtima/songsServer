@@ -69,7 +69,7 @@ fun Application.configureRouting() {
                 call.respond(HttpStatusCode.NotFound)
                 return@get
             }
-            val file = File("/home/songsserver/cache/$uuid")
+            val file = File(System.getenv("CACHE_PATH") + uuid)
             if (!file.exists() || (Date().time - file.lastModified() > 1000 * 60 * 60)) {
                 val byteArray = SongAudio.loadAudioFromS3(uuid)
                 if (byteArray == null) {
