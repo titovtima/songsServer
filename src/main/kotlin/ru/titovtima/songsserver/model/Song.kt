@@ -347,7 +347,7 @@ data class SongPerformance(val artist: Artist?, val songName: String?, val link:
         }
         val query = dbConnection.prepareStatement(
             "insert into song_performance (song_id, artist_id, song_name, link, is_original, is_main, audio_uuid) " +
-                    "values (?, ?, ?, ?, ?, ?);")
+                    "values (?, ?, ?, ?, ?, ?, ?);")
         query.setInt(1, songId)
         if (saveArtistId != null) query.setInt(2, saveArtistId)
         else if (artist == null) query.setNull(2, Types.INTEGER)
