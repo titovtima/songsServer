@@ -525,21 +525,23 @@ class SongAudio {
             return uuid
         }
 
-        private fun getFreeUuid(): String {
+        private suspend fun getFreeUuid(): String {
             var free = false
             var uuid: String = UUID.randomUUID().toString()
-            dbConnection.autoCommit = false
-            while (!free) {
-                uuid = UUID.randomUUID().toString()
-                val query = dbConnection.prepareStatement("select * from song_audio where uuid = ?;")
+            dbLock.withLock {
+                dbConnection.autoCommit = false
+                while (!free) {
+                    uuid = UUID.randomUUID().toString()
+                    val query = dbConnection.prepareStatement("select * from song_audio where uuid = ?;")
+                    query.setString(1, uuid)
+                    free = !query.executeQuery().next()
+                }
+                val query = dbConnection.prepareStatement("insert into song_audio (uuid) values (?);")
                 query.setString(1, uuid)
-                free = query.executeQuery().next()
+                query.executeUpdate()
+                dbConnection.commit()
+                dbConnection.autoCommit = true
             }
-            val query = dbConnection.prepareStatement("insert into song_audio (uuid) values (?);")
-            query.setString(1, uuid)
-            query.executeUpdate()
-            dbConnection.commit()
-            dbConnection.autoCommit = true
             return uuid
         }
     }
