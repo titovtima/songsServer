@@ -145,6 +145,17 @@ fun Application.configureRouting() {
                 val uuid = SongAudio.uploadAudioToS3(bytes)
                 call.respond(mapOf("uuid" to uuid))
             }
+            post("/api/v1/song/{id}/audio") {
+                val songId = call.parameters["id"]
+                val contentType = call.request.contentType()
+                if (!contentType.match(ContentType.Audio.MPEG)) {
+                    call.respond(HttpStatusCode.UnsupportedMediaType)
+                    return@post
+                }
+                val bytes = call.receive<ByteArray>()
+                val uuid = SongAudio.uploadAudioToS3(bytes, songId ?: "")
+                call.respond(mapOf("uuid" to uuid))
+            }
             post("/api/v1/artist/{id}") {
                 val id = call.parameters["id"]
                 if (id == null) {

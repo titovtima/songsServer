@@ -506,12 +506,13 @@ class SongAudio {
             return resultStream
         }
 
-        suspend fun uploadAudioToS3(byteArray: ByteArray): String {
-            val uuid = getFreeUuid()
+        suspend fun uploadAudioToS3(byteArray: ByteArray, songId: String = ""): String {
+            val uuid = getFreeUuid(songId.toIntOrNull())
 
             val putRequest = PutObjectRequest {
                 bucket = S3_BUCKET
                 key = uuid
+                metadata = mapOf("songId" to songId)
                 body = ByteStream.fromBytes(byteArray)
             }
 
@@ -525,7 +526,7 @@ class SongAudio {
             return uuid
         }
 
-        private suspend fun getFreeUuid(): String {
+        private suspend fun getFreeUuid(songId: Int? = null): String {
             var free = false
             var uuid: String = UUID.randomUUID().toString()
             dbLock.withLock {
@@ -536,9 +537,16 @@ class SongAudio {
                     query.setString(1, uuid)
                     free = !query.executeQuery().next()
                 }
-                val query = dbConnection.prepareStatement("insert into song_audio (uuid) values (?);")
-                query.setString(1, uuid)
-                query.executeUpdate()
+                if (songId != null) {
+                    val query = dbConnection.prepareStatement("insert into song_audio (uuid, song_id) values (?, ?);")
+                    query.setString(1, uuid)
+                    query.setInt(2, songId)
+                    query.executeUpdate()
+                } else {
+                    val query = dbConnection.prepareStatement("insert into song_audio (uuid) values (?);")
+                    query.setString(1, uuid)
+                    query.executeUpdate()
+                }
                 dbConnection.commit()
                 dbConnection.autoCommit = true
             }
