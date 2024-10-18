@@ -381,6 +381,24 @@ fun Application.configureSongsListsRoutes() {
                 val user = userId?.let { User.readFromDb(it) }
                 call.respond(ListOfSongsListsInfoResponse(SongsListInfo.readAllFromDb(user)))
             }
+            get("/api/v1/songs_list/{id}/rights") {
+                val user = getUser(call)
+                if (user == null) {
+                    call.respond(HttpStatusCode.Unauthorized)
+                    return@get
+                }
+                val listId = call.parameters["id"]?.toIntOrNull()
+                if (listId == null) {
+                    call.respond(HttpStatusCode.NotFound)
+                    return@get
+                }
+                val rights = SongsListRights.readFromDb(listId, user)
+                if (rights == null) {
+                    call.respond(HttpStatusCode.NotFound)
+                } else {
+                    call.respond(HttpStatusCode.OK, rights)
+                }
+            }
         }
         authenticate("auth-bearer") {
             post("/api/v1/songs_list/{id}") {
@@ -412,6 +430,11 @@ fun Application.configureSongsListsRoutes() {
                     call.respond(HttpStatusCode.NotFound)
                     return@post
                 }
+                val list = call.receive<PostSongsList>()
+                if (list.id != listId) {
+                    call.respond(HttpStatusCode.BadRequest, "List id should match id in url")
+                    return@post
+                }
                 val oldList = SongsListInfo.readFromDb(listId, user)
                 if (oldList == null) {
                     call.respond(HttpStatusCode.NotFound)
@@ -419,11 +442,6 @@ fun Application.configureSongsListsRoutes() {
                 }
                 if (!PostSongsList.checkWriteAccess(listId, user)) {
                     call.respond(HttpStatusCode.Forbidden)
-                    return@post
-                }
-                val list = call.receive<PostSongsList>()
-                if (list.id != listId) {
-                    call.respond(HttpStatusCode.BadRequest, "List id should match id in url")
                     return@post
                 }
                 if (!oldList.public && list.public && !user.approved && !user.isAdmin) {
@@ -434,6 +452,32 @@ fun Application.configureSongsListsRoutes() {
                     call.respond(HttpStatusCode.InternalServerError, "Error while writing to database")
                 } else {
                     call.respond(HttpStatusCode.OK, SongsListInfo(list.id, list.name, list.owner, list.public))
+                }
+            }
+            post("/api/v1/songs_list/{id}/rights") {
+                val user = getUser(call)
+                if (user == null) {
+                    call.respond(HttpStatusCode.Unauthorized)
+                    return@post
+                }
+                val listId = call.parameters["id"]?.toIntOrNull()
+                if (listId == null) {
+                    call.respond(HttpStatusCode.NotFound)
+                    return@post
+                }
+                val rights = call.receive<SongsListRights>()
+                if (rights.listId != listId) {
+                    call.respond(HttpStatusCode.BadRequest, "List id should match id in url")
+                    return@post
+                }
+                if (!SongsListRights.checkWriteAccess(listId, user)) {
+                    call.respond(HttpStatusCode.Forbidden)
+                    return@post
+                }
+                if (!rights.writeToDb(user)) {
+                    call.respond(HttpStatusCode.BadGateway, "Error while writing to database")
+                } else {
+                    call.respond(HttpStatusCode.OK)
                 }
             }
         }
