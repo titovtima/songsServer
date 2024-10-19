@@ -8,6 +8,7 @@ import io.ktor.server.plugins.partialcontent.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
 import ru.titovtima.songsserver.model.*
 import java.io.File
@@ -69,17 +70,21 @@ fun Application.configureRouting() {
                 call.respond(HttpStatusCode.NotFound)
                 return@get
             }
-            val file = File(System.getenv("CACHE_PATH") + uuid)
-            if (!file.exists() || (Date().time - file.lastModified() > 1000 * 60 * 60)) {
-                val byteArray = SongAudio.loadAudioFromS3(uuid)
-                if (byteArray == null) {
-                    call.respond(HttpStatusCode.NotFound)
-                    return@get
+            MutexByString.withLock(uuid) {
+                runBlocking {
+                    val file = File(System.getenv("CACHE_PATH") + uuid)
+                    if (!file.exists() || (Date().time - file.lastModified() > 1000 * 60 * 60)) {
+                        val byteArray = SongAudio.loadAudioFromS3(uuid)
+                        if (byteArray == null) {
+                            call.respond(HttpStatusCode.NotFound)
+                            return@runBlocking
+                        }
+                        file.writeBytes(byteArray)
+                    }
+                    call.response.header("Content-Type", "audio/mpeg")
+                    call.respondFile(file)
                 }
-                file.writeBytes(byteArray)
             }
-            call.response.header("Content-Type", "audio/mpeg")
-            call.respondFile(file)
         }
         get("/api/v1/user/{username}") {
             val username = call.parameters["username"]
