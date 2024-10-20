@@ -49,9 +49,11 @@ suspend fun cleanOldCache() {
     val now = System.currentTimeMillis()
     val cacheDir = File(System.getenv("CACHE_PATH"))
     cacheDir.walk().forEach { file ->
-        val attrs = Files.readAttributes(file.toPath(), BasicFileAttributes::class.java)
-        if (now - attrs.lastAccessTime().toMillis() > 1000 * 60 * 60) {
-            MutexByString.withLock(file.name) { file.delete() }
+        if (file.isFile) {
+            val attrs = Files.readAttributes(file.toPath(), BasicFileAttributes::class.java)
+            if (now - attrs.lastAccessTime().toMillis() > 1000 * 60 * 60) {
+                MutexByString.withLock(file.name) { file.delete() }
+            }
         }
     }
 }
