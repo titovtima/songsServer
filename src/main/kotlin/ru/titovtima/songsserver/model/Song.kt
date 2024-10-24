@@ -139,7 +139,7 @@ data class Song (val id: Int, val name: String, val extra: String?, val key: Int
                     "update song_audio set song_id = null where song_id = ?;")
                 queryDeleteAudios.setInt(1, id)
                 queryDeleteAudios.executeUpdate()
-                val allAudios = audios.plus(performances.mapNotNull { it.audio })
+                val allAudios = audios.plus(performances.mapNotNull { it.audio }).toSet().toList()
                 if (allAudios.isNotEmpty()) {
                     val questions = Collections.nCopies(allAudios.size, "?").joinToString(",")
                     val query = dbConnection.prepareStatement(
