@@ -225,6 +225,7 @@ data class NewSongsList(val name: String, val public: Boolean, val list: List<In
     }
 }
 
+@Serializable
 data class SongsListRights(val listId: Int, val readers: List<String>, val writers: List<String>, val owner: String) {
     companion object {
         fun readFromDb(listId: Int, user: User?): SongsListRights? {
