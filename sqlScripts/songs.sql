@@ -2,7 +2,7 @@
 --     artist, group_admin, group_list_reader, group_list_writer, group_song_data, auth_tokens, song_audio,
 --     group_song_reader, group_song_writer, song, song_reader, song_writer, songs_list, song_in_list,
 --     list_reader, list_writer, user_in_group, users, users_group, user_song_data, song_part, song_performance,
---     old_encoded_password, song_draft, new_song_draft, keys
+--     old_encoded_password, song_draft, new_song_draft, keys, performance_artist
 --     cascade;
 
 create table users (
@@ -56,13 +56,18 @@ create table song_audio (
 );
 
 create table song_performance (
+    id int primary key,
     song_id int not null references song(id),
-    artist_id int references artist(id),
     song_name varchar(256),
     link varchar(1024),
     is_original bool default false,
     is_main bool,
     audio_uuid char(36) references song_audio(uuid) default null
+);
+
+create table performance_artist (
+    performance_id int references song_performance(id) on delete cascade,
+    artist_id int references artist(id)
 );
 
 create table song_reader (
@@ -188,6 +193,7 @@ insert into keys (name, min_key) values ('song', 1);
 insert into keys (name, min_key) values ('songs_list', 1);
 insert into keys (name, min_key) values ('users_group', 1);
 insert into keys (name, min_key) values ('artist', 1);
+insert into keys (name, min_key) values ('performance', 1);
 
 -- drop view if exists song_with_username;
 -- drop view if exists songs_list_with_username;

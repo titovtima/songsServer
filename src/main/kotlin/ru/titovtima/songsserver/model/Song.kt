@@ -254,7 +254,7 @@ data class SongPart(val type: SongPartType, val ord: Int, val name: String? = nu
 }
 
 @Serializable
-data class Artist(val id: Int, val name: String) {
+data class Artist(var id: Int, val name: String) {
     companion object {
         fun readFromDb(id: Int): Artist? {
             val query = dbConnection.prepareStatement("select name from artist where id = ?;")
@@ -279,7 +279,7 @@ data class Artist(val id: Int, val name: String) {
             return result
         }
 
-        suspend fun saveNew(name: String): Int? {
+        suspend fun saveNew(name: String): Int {
             if (dbConnection.autoCommit) {
                 dbLock.withLock {
                     dbConnection.autoCommit = false
@@ -293,18 +293,19 @@ data class Artist(val id: Int, val name: String) {
             }
         }
 
-        private fun saveNewInner(name: String): Int? {
-            val queryGetId = dbConnection.prepareStatement("select min_key from keys where name='artist';")
-            val resultSet = queryGetId.executeQuery()
-            if (!resultSet.next()) return null
-            val id = resultSet.getInt("min_key")
-            val queryUpdateMinKey = dbConnection.prepareStatement("update keys set min_key = ? where name='artist';")
-            queryUpdateMinKey.setInt(1, id + 1)
-            if (queryUpdateMinKey.executeUpdate() != 1) return null
+        private suspend fun saveNewInner(name: String): Int {
+//            val queryGetId = dbConnection.prepareStatement("select min_key from keys where name='artist';")
+//            val resultSet = queryGetId.executeQuery()
+//            if (!resultSet.next()) throw SavingToDbException("Min key for artist not found")
+//            val id = resultSet.getInt("min_key")
+//            val queryUpdateMinKey = dbConnection.prepareStatement("update keys set min_key = ? where name='artist';")
+//            queryUpdateMinKey.setInt(1, id + 1)
+//            if (queryUpdateMinKey.executeUpdate() != 1) throw SavingToDbException("Update min key for artist failed")
+            val id = getNewId("artist")
             val queryCreate = dbConnection.prepareStatement("insert into artist(id, name) values (?, ?);")
             queryCreate.setInt(1, id)
             queryCreate.setString(2, name)
-            if (queryCreate.executeUpdate() != 1) return null
+            if (queryCreate.executeUpdate() != 1) throw SavingToDbException("Insert into artist failed")
             return id
         }
     }
@@ -318,7 +319,7 @@ data class Artist(val id: Int, val name: String) {
 }
 
 @Serializable
-data class SongPerformance(val artist: Artist?, val songName: String?, val link: String?,
+data class SongPerformance(var id: Int, val artists: List<Artist>, val songName: String?, val link: String?,
                            val isOriginal: Boolean = false, val isMain: Boolean = false, val audio: String? = null) {
     companion object {
         fun getAllSongPerformances(songId: Int): List<SongPerformance> {
@@ -327,31 +328,45 @@ data class SongPerformance(val artist: Artist?, val songName: String?, val link:
             val resultSet = query.executeQuery()
             val result = arrayListOf<SongPerformance>()
             while (resultSet.next()) {
-                var artistId: Int? = resultSet.getInt("artist_id")
-                if (resultSet.wasNull()) artistId = null
+                val id = resultSet.getInt("id")
                 val songName = resultSet.getString("song_name")
                 val link = resultSet.getString("link")
                 val isOriginal = resultSet.getBoolean("is_original")
                 val isMain = resultSet.getBoolean("is_main")
                 val audio = resultSet.getString("audio_uuid")
-                result.add(SongPerformance(artistId?.let { Artist.readFromDb(it) }, songName, link, isOriginal, isMain, audio))
+                val queryArtists = dbConnection.prepareStatement(
+                    "select a.id, a.name from performance_artist pa " +
+                    "left join artist a on pa.artist_id = a.id " +
+                    "where pa.performance_id = ?;"
+                )
+                queryArtists.setInt(1, id)
+                val resultSetArtists = queryArtists.executeQuery()
+                val artists = arrayListOf<Artist>()
+                while (resultSetArtists.next()) {
+                    val artistId = resultSetArtists.getInt("id")
+                    val name = resultSetArtists.getString("name")
+                    artists.add(Artist(artistId, name))
+                }
+                result.add(SongPerformance(id, artists, songName, link, isOriginal, isMain, audio))
             }
             return result
         }
     }
 
     suspend fun saveToDb(songId: Int) {
-        var saveArtistId: Int? = null
-        if (artist != null && artist.id < 0) {
-            saveArtistId = Artist.saveNew(artist.name)
+        artists.forEach { artist ->
+            if (artist.id < 0) {
+                artist.id = Artist.saveNew(artist.name)
+            }
+        }
+        if (id < 0) {
+            id = getNewId("performance")
         }
         val query = dbConnection.prepareStatement(
-            "insert into song_performance (song_id, artist_id, song_name, link, is_original, is_main, audio_uuid) " +
+            "insert into song_performance (id, song_id, song_name, link, is_original, is_main, audio_uuid) " +
                     "values (?, ?, ?, ?, ?, ?, ?);")
-        query.setInt(1, songId)
-        if (saveArtistId != null) query.setInt(2, saveArtistId)
-        else if (artist == null) query.setNull(2, Types.INTEGER)
-        else query.setInt(2, artist.id)
+        query.setInt(1, id)
+        query.setInt(2, songId)
         if (songName == null) query.setNull(3, Types.VARCHAR)
         else query.setString(3, songName)
         if (link == null) query.setNull(4, Types.VARCHAR)
@@ -361,6 +376,16 @@ data class SongPerformance(val artist: Artist?, val songName: String?, val link:
         if (audio == null) query.setNull(7, Types.VARCHAR)
         else query.setString(7, audio)
         query.executeUpdate()
+        if (artists.isNotEmpty()) {
+            val artistsString = "insert into performance_artist(performance_id, artist_id) values " +
+                Collections.nCopies(artists.size, "(?,?)").joinToString(",") + ";"
+            val queryArtists = dbConnection.prepareStatement(artistsString)
+            for (i in artists.indices) {
+                queryArtists.setInt(i * 2 + 1, id)
+                queryArtists.setInt(i * 2 + 2, artists[i].id)
+            }
+            queryArtists.executeUpdate()
+        }
     }
 }
 
@@ -613,5 +638,20 @@ data class SongInfo(val id: Int, val name: String, val public: Boolean, val inMa
             }
             return result
         }
+    }
+}
+
+suspend fun getNewId(name: String): Int {
+    return MutexByString.withLock("minKey:$name") {
+        val queryGetId = dbConnection.prepareStatement("select min_key from keys where name=?;")
+        queryGetId.setString(1, name)
+        val resultSet = queryGetId.executeQuery()
+        if (!resultSet.next()) throw SavingToDbException("Min key for $name not found")
+        val id = resultSet.getInt("min_key")
+        val queryUpdateMinKey = dbConnection.prepareStatement("update keys set min_key = ? where name=?;")
+        queryUpdateMinKey.setInt(1, id + 1)
+        queryUpdateMinKey.setString(2, name)
+        if (queryUpdateMinKey.executeUpdate() != 1) throw SavingToDbException("Update min key for $name failed")
+        return@withLock id
     }
 }
