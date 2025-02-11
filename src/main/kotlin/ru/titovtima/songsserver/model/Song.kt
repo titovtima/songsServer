@@ -18,7 +18,7 @@ import java.util.UUID
 @Serializable
 data class Song (val id: Int, val name: String, val extra: String?, val key: Int?,
                  val owner: String, val public: Boolean, val inMainList: Boolean,
-                 val parts: List<SongPart>, val performances: List<SongPerformance>, val audios: List<String>) {
+                 val parts: List<SongPart>, val performances: List<SongPerformance>) {
     companion object {
         fun readFromDb(id: Int, user: User?): Song? {
             if (user == null) {
@@ -67,8 +67,7 @@ data class Song (val id: Int, val name: String, val extra: String?, val key: Int
                 val inMainList = resultSet.getBoolean("in_main_list")
                 val songParts = SongPart.getAllSongParts(id)
                 val songPerformances = SongPerformance.getAllSongPerformances(id)
-                val songAudios = getAllSongAudio(id)
-                return Song(id, name, extra, key, owner, public, inMainList, songParts, songPerformances, songAudios)
+                return Song(id, name, extra, key, owner, public, inMainList, songParts, songPerformances)
             } else {
                 return null
             }
@@ -80,18 +79,6 @@ data class Song (val id: Int, val name: String, val extra: String?, val key: Int
             while (song != null) {
                 result.add(song)
                 song = songFromResultSet(resultSet)
-            }
-            return result
-        }
-
-        private fun getAllSongAudio(songId: Int): List<String> {
-            val query = dbConnection.prepareStatement("select uuid from song_audio where song_id = ?;")
-            query.setInt(1, songId)
-            val resultSet = query.executeQuery()
-            val result = arrayListOf<String>()
-            while (resultSet.next()) {
-                val uuid = resultSet.getString("uuid")
-                result.add(uuid)
             }
             return result
         }
@@ -135,11 +122,7 @@ data class Song (val id: Int, val name: String, val extra: String?, val key: Int
                     queryUpdate.executeUpdate()
                 }
 
-                val queryDeleteAudios = dbConnection.prepareStatement(
-                    "update song_audio set song_id = null where song_id = ?;")
-                queryDeleteAudios.setInt(1, id)
-                queryDeleteAudios.executeUpdate()
-                val allAudios = audios.plus(performances.mapNotNull { it.audio }).toSet().toList()
+                val allAudios = performances.mapNotNull { it.audio }.toSet().toList()
                 if (allAudios.isNotEmpty()) {
                     val questions = Collections.nCopies(allAudios.size, "?").joinToString(",")
                     val query = dbConnection.prepareStatement(
@@ -179,11 +162,11 @@ data class Song (val id: Int, val name: String, val extra: String?, val key: Int
 @Serializable
 data class NewSongData (val name: String, val extra: String? = null, val key: Int? = null,
                         val public: Boolean = false, val inMainList: Boolean = false, val parts: List<SongPart>,
-                        val performances: List<SongPerformance> = listOf(), val audios: List<String> = listOf()) {
+                        val performances: List<SongPerformance> = listOf()) {
 
     fun makeSong(user: User): Song? {
         val id = getId() ?: return null
-        return Song(id, name, extra, key, user.username, public, inMainList, parts, performances, audios)
+        return Song(id, name, extra, key, user.username, public, inMainList, parts, performances)
     }
 
     private fun getId(): Int? {
