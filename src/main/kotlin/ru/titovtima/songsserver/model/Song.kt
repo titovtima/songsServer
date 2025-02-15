@@ -204,7 +204,7 @@ fun songPartTypeFromInt(int: Int) = when (int) {
 data class SongPart(val type: SongPartType, val ord: Int, val name: String? = null, val data: String, val key: Int? = null) {
     companion object {
         fun getAllSongParts(songId: Int): List<SongPart> {
-            val query = dbConnection.prepareStatement("select * from song_part where song_id = ?;")
+            val query = dbConnection.prepareStatement("select * from song_part where song_id = ? order by ord;")
             query.setInt(1, songId)
             val resultSet = query.executeQuery()
             val result = arrayListOf<SongPart>()
@@ -277,13 +277,6 @@ data class Artist(var id: Int, val name: String) {
         }
 
         private suspend fun saveNewInner(name: String): Int {
-//            val queryGetId = dbConnection.prepareStatement("select min_key from keys where name='artist';")
-//            val resultSet = queryGetId.executeQuery()
-//            if (!resultSet.next()) throw SavingToDbException("Min key for artist not found")
-//            val id = resultSet.getInt("min_key")
-//            val queryUpdateMinKey = dbConnection.prepareStatement("update keys set min_key = ? where name='artist';")
-//            queryUpdateMinKey.setInt(1, id + 1)
-//            if (queryUpdateMinKey.executeUpdate() != 1) throw SavingToDbException("Update min key for artist failed")
             val id = getNewId("artist")
             val queryCreate = dbConnection.prepareStatement("insert into artist(id, name) values (?, ?);")
             queryCreate.setInt(1, id)
@@ -303,10 +296,12 @@ data class Artist(var id: Int, val name: String) {
 
 @Serializable
 data class SongPerformance(var id: Int, val artists: List<Artist>, val songName: String?, val link: String?,
+                           val extra: String?, val album: String?, val lang: String?, val date: String?, val key: Int?,
+                           val ord: Int, val bpm: Int?,
                            val isOriginal: Boolean = false, val isMain: Boolean = false, val audio: String? = null) {
     companion object {
         fun getAllSongPerformances(songId: Int): List<SongPerformance> {
-            val query = dbConnection.prepareStatement("select * from song_performance where song_id = ?;")
+            val query = dbConnection.prepareStatement("select * from song_performance where song_id = ? order by ord;")
             query.setInt(1, songId)
             val resultSet = query.executeQuery()
             val result = arrayListOf<SongPerformance>()
@@ -314,6 +309,15 @@ data class SongPerformance(var id: Int, val artists: List<Artist>, val songName:
                 val id = resultSet.getInt("id")
                 val songName = resultSet.getString("song_name")
                 val link = resultSet.getString("link")
+                val extra = resultSet.getString("extra")
+                val album = resultSet.getString("album")
+                val lang = resultSet.getString("lang")
+                val date = resultSet.getString("date")
+                var key: Int? = resultSet.getInt("key")
+                if (resultSet.wasNull()) key = null
+                val ord = resultSet.getInt("ord")
+                var bpm: Int? = resultSet.getInt("bpm")
+                if (resultSet.wasNull()) bpm = null
                 val isOriginal = resultSet.getBoolean("is_original")
                 val isMain = resultSet.getBoolean("is_main")
                 val audio = resultSet.getString("audio_uuid")
@@ -330,7 +334,8 @@ data class SongPerformance(var id: Int, val artists: List<Artist>, val songName:
                     val name = resultSetArtists.getString("name")
                     artists.add(Artist(artistId, name))
                 }
-                result.add(SongPerformance(id, artists, songName, link, isOriginal, isMain, audio))
+                result.add(SongPerformance(
+                    id, artists, songName, link, extra, album, lang, date, key, ord, bpm, isOriginal, isMain, audio))
             }
             return result
         }
@@ -346,18 +351,32 @@ data class SongPerformance(var id: Int, val artists: List<Artist>, val songName:
             id = getNewId("performance")
         }
         val query = dbConnection.prepareStatement(
-            "insert into song_performance (id, song_id, song_name, link, is_original, is_main, audio_uuid) " +
-                    "values (?, ?, ?, ?, ?, ?, ?);")
+            "insert into song_performance " +
+                "(id, song_id, song_name, link, extra, album, lang, date, key, ord, bpm, is_original, is_main, audio_uuid) " +
+                "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);")
         query.setInt(1, id)
         query.setInt(2, songId)
         if (songName == null) query.setNull(3, Types.VARCHAR)
         else query.setString(3, songName)
         if (link == null) query.setNull(4, Types.VARCHAR)
         else query.setString(4, link)
-        query.setBoolean(5, isOriginal)
-        query.setBoolean(6, isMain)
-        if (audio == null) query.setNull(7, Types.VARCHAR)
-        else query.setString(7, audio)
+        if (extra == null) query.setNull(5, Types.VARCHAR)
+        else query.setString(5, extra)
+        if (album == null) query.setNull(6, Types.VARCHAR)
+        else query.setString(6, album)
+        if (lang == null) query.setNull(7, Types.VARCHAR)
+        else query.setString(7, lang)
+        if (date == null) query.setNull(8, Types.VARCHAR)
+        else query.setString(8, date)
+        if (key == null) query.setNull(9, Types.INTEGER)
+        else query.setInt(9, key)
+        query.setInt(10, ord)
+        if (bpm == null) query.setNull(11, Types.INTEGER)
+        else query.setInt(11, bpm)
+        query.setBoolean(12, isOriginal)
+        query.setBoolean(13, isMain)
+        if (audio == null) query.setNull(14, Types.VARCHAR)
+        else query.setString(14, audio)
         query.executeUpdate()
         if (artists.isNotEmpty()) {
             val artistsString = "insert into performance_artist(performance_id, artist_id) values " +
