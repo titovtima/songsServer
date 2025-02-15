@@ -60,6 +60,13 @@ create table song_performance (
     song_id int not null references song(id),
     song_name varchar(256),
     link varchar(1024),
+    extra text default null,
+    date varchar(40) default null,
+    ord int,
+    key int default null,
+    bpm int default null,
+    lang varchar(10) default null,
+    album varchar(256) default null,
     is_original bool default false,
     is_main bool,
     audio_uuid char(36) references song_audio(uuid) default null
