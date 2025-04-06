@@ -1,5 +1,9 @@
 package ru.titovtima.songsserver
 
+import io.ktor.client.*
+import io.ktor.client.engine.cio.*
+import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
 import io.ktor.server.netty.*
@@ -55,5 +59,12 @@ suspend fun cleanOldCache() {
                 MutexByString.withLock(file.name) { file.delete() }
             }
         }
+    }
+}
+
+val HOST = System.getenv("HOST") ?: throw error("Env HOST not defined")
+val httpClient = HttpClient(CIO) {
+    install(ContentNegotiation) {
+        json()
     }
 }

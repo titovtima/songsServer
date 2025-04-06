@@ -4,9 +4,13 @@ import kotlinx.serialization.Serializable
 import ru.titovtima.songsserver.Encoder
 import ru.titovtima.songsserver.OldEncoder
 import ru.titovtima.songsserver.dbConnection
+import java.sql.Types
 
 @Serializable
-data class UserLogin(val username: String, val password: String) {
+data class UserLogin(val username: String, val password: String)
+
+@Serializable
+data class UserRegisterData(val username: String, val password: String, val email: String? = null) {
     fun checkRegex() = Authorization.usernameRegex.matches(username) && Authorization.passwordRegex.matches(password)
 }
 
@@ -15,15 +19,20 @@ class Authorization {
         val usernameRegex = Regex("[a-zA-Zа-яА-Я0-9_.@-]{3,64}")
         val passwordRegex = Regex("[a-zA-Zа-яА-Я0-9_#?!@\$%^&*-]{6,128}")
 
-        fun register(userLogin: UserLogin): Int {
-            if (!checkUsernameFree(userLogin.username))
+        fun register(registerData: UserRegisterData): Int {
+            if (!checkUsernameFree(registerData.username))
                 return 1
-            val encodedPassword = Encoder.encodeString(userLogin.password).toString()
-            val newId = getNewUserId() ?: 2
-            val query = dbConnection.prepareStatement("insert into users(id, username, password) values (?, ?, ?);")
+            val encodedPassword = Encoder.encodeString(registerData.password).toString()
+            val newId = getNewUserId() ?: return 2
+            val query = dbConnection.prepareStatement(
+                "insert into users(id, username, password, email) values (?, ?, ?, ?);")
             query.setInt(1, newId)
-            query.setString(2, userLogin.username)
+            query.setString(2, registerData.username)
             query.setString(3, encodedPassword)
+            if (registerData.email == null)
+                query.setNull(4, Types.VARCHAR)
+            else
+                query.setString(4, registerData.email)
             query.executeUpdate()
             return 0
         }
@@ -76,12 +85,18 @@ class Authorization {
             }
         }
 
-        fun changePassword(user: User, newPassword: String) {
+        fun changePassword(userId: Int, newPassword: String) {
             val encodedPassword = Encoder.encodeString(newPassword).toString()
             val query = dbConnection.prepareStatement(
                 "update users set password = ?, last_change_password = now() where id = ?;")
             query.setString(1, encodedPassword)
-            query.setInt(2, user.id)
+            query.setInt(2, userId)
+            query.executeUpdate()
+        }
+
+        fun revokeAllTokens(userId: Int) {
+            val query = dbConnection.prepareStatement("delete from auth_tokens where user_id = ?;")
+            query.setInt(1, userId)
             query.executeUpdate()
         }
 

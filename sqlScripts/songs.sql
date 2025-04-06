@@ -9,6 +9,8 @@ create table users (
     id int primary key,
     username varchar(64) not null unique,
     password varchar(128) not null,
+    email varchar(128) default null,
+    email_activated bool not null default false,
     last_login date default now(),
     last_change_password timestamptz default now(),
     approved bool not null default false,
@@ -20,6 +22,13 @@ create table auth_tokens (
     token varchar(128) not null unique,
     created_at timestamptz not null default now(),
     used_at timestamptz not null default now()
+);
+
+create table action_tokens (
+    user_id int not null references users(id),
+    token varchar(128) not null unique,
+    created_at timestamptz not null default now(),
+    action int not null
 );
 
 create table artist (

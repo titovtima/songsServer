@@ -25,45 +25,10 @@ fun Application.configureRouting() {
         allowMethod(HttpMethod.Post)
         allowMethod(HttpMethod.Head)
     }
+    this.configureAuthRoutes()
     this.configureSongsRoutes()
     this.configureSongsListsRoutes()
     routing {
-        post("/api/v1/register") {
-            val userLogin = call.receive<UserLogin>()
-            if (!userLogin.checkRegex()) {
-                call.respond(HttpStatusCode.BadRequest, ErrorResponse(1,
-                    "Username should match ${Authorization.usernameRegex.pattern} and " +
-                            "password should match ${Authorization.passwordRegex.pattern}"))
-                return@post
-            }
-            val success = Authorization.register(userLogin)
-            when (success) {
-                0 -> call.respond(HttpStatusCode.Created)
-                1 -> call.respond(HttpStatusCode.BadRequest,
-                    ErrorResponse(2, "Username is already taken"))
-                2 -> call.respond(HttpStatusCode.InternalServerError,
-                    ErrorResponse(3, "Error getting new id"))
-                else -> call.respond(HttpStatusCode.InternalServerError,
-                    ErrorResponse(4, "Server error"))
-            }
-        }
-        post("/api/v1/login") {
-            val userLogin = call.receive<UserLogin>()
-            if (!Authorization.checkCredentials(userLogin)) {
-                call.respond(HttpStatusCode.Unauthorized)
-                return@post
-            }
-            val user = User.readFromDb(userLogin.username)
-            if (user == null) {
-                call.respond(HttpStatusCode.Unauthorized)
-                return@post
-            }
-            val token = Token.createToken(user.id)
-            if (token == null)
-                call.respond(HttpStatusCode.BadGateway, ErrorResponse(1, "Error generating token"))
-            else
-                call.respond(mapOf("token" to token))
-        }
         get("/api/v1/audio/{uuid}") {
             val uuid = call.parameters["uuid"]
             if (uuid == null) {
@@ -117,29 +82,6 @@ fun Application.configureRouting() {
             call.respond(artist)
         }
         authenticate("auth-bearer") {
-            post("/api/v1/change_password") {
-                val user = getUser(call)
-                if (user == null) {
-                    call.respond(HttpStatusCode.Unauthorized)
-                    return@post
-                }
-                val newPassword = call.receive<NewPassword>().password
-                if (!Authorization.passwordRegex.matches(newPassword)) {
-                    call.respond(HttpStatusCode.BadRequest,
-                        "Password should match ${Authorization.passwordRegex.pattern}")
-                    return@post
-                }
-                Authorization.changePassword(user, newPassword)
-                call.respond(HttpStatusCode.OK)
-            }
-            get("/api/v1/users/me") {
-                val user = getUser(call)
-                if (user == null) {
-                    call.respond(HttpStatusCode.Unauthorized)
-                    return@get
-                }
-                call.respond(user)
-            }
             post("/api/v1/audio") {
                 val contentType = call.request.contentType()
                 if (!contentType.match(ContentType.Audio.MPEG)) {
@@ -171,10 +113,6 @@ fun Application.configureRouting() {
                 val idInt = id.toIntOrNull()
                 if (id == "new" || (idInt != null && idInt < 0)) {
                     val newId = Artist.saveNew(artist.name)
-                    if (newId == null) {
-                        call.respond(HttpStatusCode.InternalServerError, "Error creating new artist")
-                        return@post
-                    }
                     call.respond(HttpStatusCode.Created, Artist(newId, artist.name))
                     return@post
                 }
@@ -183,6 +121,125 @@ fun Application.configureRouting() {
                     return@post
                 }
                 artist.saveToDb()
+                call.respond(HttpStatusCode.OK)
+            }
+        }
+    }
+}
+
+fun Application.configureAuthRoutes() {
+    routing {
+        post("/api/v1/register") {
+            val registerData = call.receive<UserRegisterData>()
+            if (!registerData.checkRegex()) {
+                call.respond(HttpStatusCode.BadRequest, ErrorResponse(1,
+                    "Username should match ${Authorization.usernameRegex.pattern} and " +
+                            "password should match ${Authorization.passwordRegex.pattern}"))
+                return@post
+            }
+            val success = Authorization.register(registerData)
+            when (success) {
+                0 -> call.respond(HttpStatusCode.Created)
+                1 -> call.respond(HttpStatusCode.BadRequest,
+                    ErrorResponse(2, "Username is already taken"))
+                2 -> call.respond(HttpStatusCode.InternalServerError,
+                    ErrorResponse(3, "Error getting new id"))
+                else -> call.respond(HttpStatusCode.InternalServerError,
+                    ErrorResponse(4, "Server error"))
+            }
+        }
+        post("/api/v1/login") {
+            val userLogin = call.receive<UserLogin>()
+            if (!Authorization.checkCredentials(userLogin)) {
+                call.respond(HttpStatusCode.Unauthorized)
+                return@post
+            }
+            val user = User.readFromDb(userLogin.username)
+            if (user == null) {
+                call.respond(HttpStatusCode.Unauthorized)
+                return@post
+            }
+            val token = AuthToken.createToken(user.id)
+            if (token == null)
+                call.respond(HttpStatusCode.BadGateway, ErrorResponse(1, "Error generating token"))
+            else
+                call.respond(mapOf("token" to token))
+        }
+        post("/api/v1/reset_password/{userId}/{token}") {
+            val userId = call.parameters["userId"]?.toIntOrNull()
+            val token = call.parameters["token"]
+            if (userId == null || token == null || !ActionToken.checkToken(userId, token, 1)) {
+                call.respond(HttpStatusCode.NotFound)
+                return@post
+            }
+            val newPassword = call.receive<OptNewPassword>().password
+            if (newPassword == null) {
+                call.respond(HttpStatusCode(211, "Token checked"))
+                return@post
+            }
+            if (!Authorization.passwordRegex.matches(newPassword)) {
+                call.respond(HttpStatusCode.BadRequest,
+                    "Password should match ${Authorization.passwordRegex.pattern}")
+                return@post
+            }
+            Authorization.changePassword(userId, newPassword)
+            if (call.request.queryParameters["revokeTokens"] == "true") {
+                Authorization.revokeAllTokens(userId)
+            }
+            ActionToken.deleteToken(userId, token, 1)
+            call.respond(HttpStatusCode.OK)
+        }
+        post("/api/v1/password_recovery") {
+            val data = call.receive<PasswordRecoveryRequest>()
+            val user1 = data.username?.let { User.readFromDb(it) }
+            val usersList = arrayListOf(user1)
+            if (data.email != null) usersList.addAll(User.getByEmail(data.email))
+            var count = 0
+            for (user in usersList.filterNotNull()) {
+                val email = Email.passwordRecoveryEmail(user) ?: continue
+                email.send()
+                count++
+            }
+            if (count > 0)
+                call.respond(HttpStatusCode.OK)
+            else
+                call.respond(HttpStatusCode.BadRequest)
+        }
+        authenticate("auth-bearer") {
+            post("/api/v1/change_password") {
+                val user = getUser(call)
+                if (user == null) {
+                    call.respond(HttpStatusCode.Unauthorized)
+                    return@post
+                }
+                val newPassword = call.receive<NewPassword>().password
+                if (!Authorization.passwordRegex.matches(newPassword)) {
+                    call.respond(HttpStatusCode.BadRequest,
+                        "Password should match ${Authorization.passwordRegex.pattern}")
+                    return@post
+                }
+                Authorization.changePassword(user.id, newPassword)
+                if (call.request.queryParameters["revokeTokens"] == "true") {
+                    Authorization.revokeAllTokens(user.id)
+                }
+                call.respond(HttpStatusCode.OK)
+            }
+            get("/api/v1/users/me") {
+                val user = getUser(call)
+                if (user == null) {
+                    call.respond(HttpStatusCode.Unauthorized)
+                    return@get
+                }
+                call.respond(user)
+            }
+            post("/api/v1/change_email") {
+                val user = getUser(call)
+                if (user == null) {
+                    call.respond(HttpStatusCode.Unauthorized)
+                    return@post
+                }
+                val email = call.receive<ChangeEmailRequest>().email
+                user.changeEmail(email)
                 call.respond(HttpStatusCode.OK)
             }
         }
@@ -509,3 +566,12 @@ data class ListOfSongsInfoResponse(val list: List<SongInfo>, val count: Int = li
 
 @Serializable
 data class ListOfSongsListsInfoResponse(val list: List<SongsListInfo>, val count: Int = list.size)
+
+@Serializable
+data class PasswordRecoveryRequest(val email: String? = null, val username: String? = null)
+
+@Serializable
+data class ChangeEmailRequest(val email: String)
+
+@Serializable
+data class OptNewPassword(val password: String? = null)
