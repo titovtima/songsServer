@@ -35,10 +35,10 @@ data class Song (val id: Int, val name: String, val extra: String?, val key: Int
 
         fun readAllFromDb(user: User?): List<Song> {
             if (user == null) {
-                val query = dbConnection.prepareStatement("select * from public_songs();")
+                val query = dbConnection.prepareStatement("select * from public_songs() order by id;")
                 return allSongsFromResultSet(query.executeQuery())
             } else {
-                val query = dbConnection.prepareStatement("select * from readable_songs(?);")
+                val query = dbConnection.prepareStatement("select * from readable_songs(?) order by id;")
                 query.setInt(1, user.id)
                 return allSongsFromResultSet(query.executeQuery())
             }
