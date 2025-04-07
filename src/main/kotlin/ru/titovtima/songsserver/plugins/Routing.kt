@@ -476,10 +476,6 @@ fun Application.configureSongsListsRoutes() {
                         return@post
                     }
                     val list = listData.makeList(user)
-                    if (list == null) {
-                        call.respond(HttpStatusCode.InternalServerError, "Error getting new list id")
-                        return@post
-                    }
                     if (!list.saveToDb(user, true)) {
                         call.respond(HttpStatusCode.InternalServerError, "Error while writing to database")
                     } else {
@@ -492,7 +488,7 @@ fun Application.configureSongsListsRoutes() {
                     call.respond(HttpStatusCode.NotFound)
                     return@post
                 }
-                val list = call.receive<PostSongsList>()
+                val list = call.receive<SongsList>()
                 if (list.id != listId) {
                     call.respond(HttpStatusCode.BadRequest, "List id should match id in url")
                     return@post
@@ -502,7 +498,7 @@ fun Application.configureSongsListsRoutes() {
                     call.respond(HttpStatusCode.NotFound)
                     return@post
                 }
-                if (!PostSongsList.checkWriteAccess(listId, user)) {
+                if (!SongsList.checkWriteAccess(listId, user)) {
                     call.respond(HttpStatusCode.Forbidden)
                     return@post
                 }
