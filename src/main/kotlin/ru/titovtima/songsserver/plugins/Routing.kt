@@ -192,7 +192,7 @@ fun Application.configureAuthRoutes() {
         post("/api/v1/password_recovery") {
             val data = call.receive<PasswordRecoveryRequest>()
             val user1 = data.username?.let { User.readFromDb(it) }
-            val usersList = arrayListOf(user1)
+            val usersList = mutableSetOf(user1)
             if (data.email != null) usersList.addAll(User.getByEmail(data.email))
             var count = 0
             for (user in usersList.filterNotNull()) {
