@@ -55,7 +55,8 @@ create table song_part (
     name varchar(256) default null,
     data text not null,
     key int default null,
-    primary key (song_id, type, ord)
+    lang varchar(10) default null,
+    unique (song_id, type, ord, lang)
 );
 
 create table song_audio (

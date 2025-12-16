@@ -201,7 +201,7 @@ fun songPartTypeFromInt(int: Int) = when (int) {
 }
 
 @Serializable
-data class SongPart(val type: SongPartType, val ord: Int, val name: String? = null, val data: String, val key: Int? = null) {
+data class SongPart(val type: SongPartType, val ord: Int, val name: String? = null, val data: String, val key: Int? = null, val lang: String? = null) {
     companion object {
         fun getAllSongParts(songId: Int): List<SongPart> {
             val query = dbConnection.prepareStatement("select * from song_part where song_id = ? order by ord;")
@@ -215,7 +215,9 @@ data class SongPart(val type: SongPartType, val ord: Int, val name: String? = nu
                 val data = resultSet.getString("data")
                 var key: Int? = resultSet.getInt("key")
                 if (resultSet.wasNull()) key = null
-                result.add(SongPart(songPartTypeFromInt(type), ord, name, data, key))
+                var lang: String? = resultSet.getString("lang")
+                if (resultSet.wasNull()) lang = null
+                result.add(SongPart(songPartTypeFromInt(type), ord, name, data, key, lang))
             }
             return result
         }
@@ -223,7 +225,7 @@ data class SongPart(val type: SongPartType, val ord: Int, val name: String? = nu
 
     fun saveToDb(songId: Int) {
         val query = dbConnection.prepareStatement(
-            "insert into song_part (song_id, type, ord, name, data, key) values (?, ?, ?, ?, ?, ?);")
+            "insert into song_part (song_id, type, ord, name, data, key, lang) values (?, ?, ?, ?, ?, ?, ?);")
         query.setInt(1, songId)
         query.setInt(2, type.int)
         query.setInt(3, ord)
@@ -232,6 +234,8 @@ data class SongPart(val type: SongPartType, val ord: Int, val name: String? = nu
         query.setString(5, data)
         if (key == null) query.setNull(6, Types.INTEGER)
         else query.setInt(6, key)
+        if (lang == null) query.setNull(7, Types.VARCHAR)
+        else query.setString(7, lang)
         query.executeUpdate()
     }
 }
